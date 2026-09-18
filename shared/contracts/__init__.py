@@ -1,0 +1,53 @@
+from shared.contracts.models import (
+    PipelineStatus,
+    AutomationMode,
+    QuestionClassification,
+    NormalizedJob,
+    JobMatchResult,
+    GeneratedDocument,
+    ApplicationQuestionSchema,
+    ApplicationAnswerSchema,
+)
+from shared.contracts.events import (
+    BaseEvent,
+    JobDiscoveredEvent,
+    JobMatchedEvent,
+    JobQualifiedEvent,
+    DocumentsGeneratedEvent,
+    ApplicationAnalyzedEvent,
+    ApplicationReadyEvent,
+    ApplicationSubmittedEvent,
+    ApplicationFailedEvent,
+    ApplicationBlockedEvent,
+    parse_event,
+)
+from shared.contracts.fingerprint import (
+    canonicalize_url,
+    compute_job_fingerprint,
+    compute_application_fingerprint,
+)
+
+__all__ = [
+    "PipelineStatus",
+    "AutomationMode",
+    "QuestionClassification",
+    "NormalizedJob",
+    "JobMatchResult",
+    "GeneratedDocument",
+    "ApplicationQuestionSchema",
+    "ApplicationAnswerSchema",
+    "BaseEvent",
+    "JobDiscoveredEvent",
+    "JobMatchedEvent",
+    "JobQualifiedEvent",
+    "DocumentsGeneratedEvent",
+    "ApplicationAnalyzedEvent",
+    "ApplicationReadyEvent",
+    "ApplicationSubmittedEvent",
+    "ApplicationFailedEvent",
+    "ApplicationBlockedEvent",
+    "parse_event",
+    "canonicalize_url",
+    "compute_job_fingerprint",
+    "compute_application_fingerprint",
+]

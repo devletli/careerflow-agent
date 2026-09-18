@@ -1,0 +1,43 @@
+from shared.db.models import (
+    Base,
+    Profile,
+    Job,
+    JobRequirement,
+    JobMatch,
+    Document,
+    Application,
+    ApplicationQuestion,
+    ApplicationAnswer,
+    AutomationRun,
+    SiteAdapter,
+    PipelineEvent,
+    DeadLetterEvent,
+)
+from shared.db.session import (
+    async_engine,
+    async_session_maker,
+    get_session,
+    get_db_session,
+    check_db_health,
+)
+
+__all__ = [
+    "Base",
+    "Profile",
+    "Job",
+    "JobRequirement",
+    "JobMatch",
+    "Document",
+    "Application",
+    "ApplicationQuestion",
+    "ApplicationAnswer",
+    "AutomationRun",
+    "SiteAdapter",
+    "PipelineEvent",
+    "DeadLetterEvent",
+    "async_engine",
+    "async_session_maker",
+    "get_session",
+    "get_db_session",
+    "check_db_health",
+]

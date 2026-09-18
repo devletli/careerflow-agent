@@ -1,0 +1,17 @@
+FROM python:3.12-slim
+WORKDIR /app
+
+COPY services/orchestrator/requirements.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY shared ./shared
+RUN pip install --no-cache-dir -e ./shared
+
+# Copy Alembic config and migrations for init-db
+COPY db/alembic.ini ./alembic.ini
+COPY db/migrations ./migrations
+
+COPY services/orchestrator/app ./app
+ENV PYTHONPATH=/app
+
+CMD ["python", "-m", "app.worker"]

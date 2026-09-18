@@ -1,0 +1,93 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyright/
+.pytype/
+.tox/
+.nox/
+.hypothesis/
+__pypackages__/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.egg-info/
+dist/
+build/
+*.sqlite
+*.sqlite3
+*.db
+
+# Secrets and local environment configuration
+.env
+.env.*
+!.env.example
+.envrc
+.direnv/
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+secrets/
+
+# Candidate personal data and source documents
+profile/profile.yaml
+profile/preferences.yaml
+profile/*.pdf
+profile/*.doc
+profile/*.docx
+profile/*.txt
+!profile/README.md
+!profile/PUT_MASTER_CV_HERE.txt
+
+# Generated documents, downloads, and browser session data
+artifacts/
+downloads/
+browser-state/
+browser-traces/
+storage_state.json
+playwright-report/
+test-results/
+test-artifacts/
+.playwright/
+*.har
+*.trace
+
+# Local build output, transcripts, and logs
+build_log.txt
+chatgpt.txt
+*.local.txt
+*.log
+*.pid
+*.seed
+
+# JavaScript / Next.js generated files
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Docker and editor-local files
+docker-compose.override.yml
+docker-compose.local.yml
+.vscode/*.local.json
+.vscode/
+.idea/
+*.code-workspace
+*.bak
+*.tmp
+*.swp
+*.orig
+
+# Operating-system files
+.DS_Store
+Thumbs.db
