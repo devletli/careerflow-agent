@@ -2,7 +2,6 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 import httpx
-from bs4 import BeautifulSoup
 
 from browser.site_adapters.discovery.base import JobSourceAdapter
 from shared.contracts.models import NormalizedJob
@@ -25,6 +24,9 @@ class GenericJobAdapter(JobSourceAdapter):
         **kwargs: Any,
     ) -> List[NormalizedJob]:
         """Discovers jobs from generic HTML pages using Schema.org JobPosting JSON-LD."""
+        # Imported lazily so the other discovery adapters (and their tests) do not need bs4.
+        from bs4 import BeautifulSoup
+
         target_urls = urls or []
         discovered: List[NormalizedJob] = []
 

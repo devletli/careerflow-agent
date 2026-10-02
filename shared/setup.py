@@ -7,7 +7,7 @@ setup(
     install_requires=[
         "pydantic>=2.7.0",
         "pydantic-settings>=2.2.0",
-        "sqlalchemy>=2.0.0",
+        "sqlalchemy[asyncio]>=2.0.0",
         "asyncpg>=0.29.0",
         "redis>=5.0.0",
         "minio>=7.2.0",

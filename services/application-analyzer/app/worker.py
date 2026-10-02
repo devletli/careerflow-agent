@@ -110,6 +110,16 @@ class ApplicationAnalyzerWorker:
 
                 ans_val, ans_src, is_ver = self.analyzer.resolve_answer(q, self.profile)
                 if ans_val is not None:
+                    # Idempotent: skip if this question was already answered
+                    # (re-analysis after event redelivery must not violate
+                    # uq_application_answers_app_question).
+                    stmt_a = select(ApplicationAnswer).where(
+                        (ApplicationAnswer.application_id == app.id)
+                        & (ApplicationAnswer.question_id == db_q.id)
+                    )
+                    res_a = await session.execute(stmt_a)
+                    if res_a.scalars().first() is not None:
+                        continue
                     db_ans = ApplicationAnswer(
                         id=uuid4(),
                         application_id=app.id,
@@ -156,9 +166,12 @@ class ApplicationAnalyzerWorker:
             job_ids = res.scalars().all()
 
         for j_id in job_ids:
-            res_app = await self.analyze_job_application(j_id)
-            if res_app:
-                count += 1
+            try:
+                res_app = await self.analyze_job_application(j_id)
+                if res_app:
+                    count += 1
+            except Exception as e:
+                logger.error(f"Error analyzing pending job {j_id}: {e}", exc_info=True)
         return count
 
     async def start(self, once: bool = False):

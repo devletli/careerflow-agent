@@ -23,7 +23,7 @@ The system is deliberately asynchronous and idempotent. Every stage reads/writes
 
 - [x] **Phase 0 — Infrastructure & Foundations**: Docker Compose, PostgreSQL schema & Alembic migrations, Redis Streams bus, MinIO client, Shared contracts & fingerprinting, Orchestrator state machine & duplicate detection, API health endpoints, and full test suite.
 - [x] **Phase 1 — Canonical Profile & Preferences**: `profile/profile.yaml` + `profile/preferences.yaml` loader, master CV parsing (`shared/profile/loader.py`).
-- [x] **Phase 2 — Job Discovery**: `JobSourceAdapter` interface with live connectors for Workable, Greenhouse, Lever, Ashby, and SmartRecruiters public job boards, deduplication by `(source, source_job_id)` and job fingerprint, incremental discovery loop.
+- [x] **Phase 2 — Job Discovery**: `JobSourceAdapter` interface with live connectors for Workable, Greenhouse, Lever, Ashby, and SmartRecruiters public job boards, plus German-market sources (Bundesagentur für Arbeit job search and the Arbeitnow job-board API), deduplication by `(source, source_job_id)` and job fingerprint, incremental discovery loop. The first entry of `locations` in `profile/preferences.yaml` is passed to adapters that support location filtering.
 - [x] **Phase 3 — Matching Engine**: deterministic requirement extraction + semantic scoring + LLM explanation, configurable weighted score and threshold (`MIN_MATCH_SCORE`).
 - [x] **Phase 4 — Document Generation**: job-specific CV/cover-letter generation, language detection, MinIO artifact storage.
 - [x] **Phase 5 — Form Analysis**: application form/question inspection and classification (legal/work-authorization, preference, open-ended).

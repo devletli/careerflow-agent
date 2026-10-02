@@ -18,6 +18,8 @@ from browser.site_adapters.discovery import (
     LeverAdapter,
     AshbyAdapter,
     SmartRecruitersAdapter,
+    BundesagenturAdapter,
+    ArbeitnowAdapter,
 )
 
 logging.basicConfig(
@@ -48,6 +50,8 @@ class JobDiscoveryWorker:
         self.bus = RedisEventBus()
         self.profile = load_canonical_profile()
         self.adapters = [
+            BundesagenturAdapter(),
+            ArbeitnowAdapter(),
             WorkableAdapter(),
             GreenhouseAdapter(),
             LeverAdapter(),
@@ -63,12 +67,15 @@ class JobDiscoveryWorker:
         total_new = 0
 
         preferred_roles = self.profile.preferences.get("preferred_roles", ["AI Engineer", "DevOps"])
+        # First configured location (e.g. "Berlin"); adapters without location support ignore it.
+        locations = self.profile.preferences.get("locations") or []
+        location = locations[0] if locations else None
 
         for adapter in self.adapters:
             logger.info(f"Running discovery with adapter: {adapter.source_name}")
             try:
                 for role in preferred_roles[:3]:  # query top preferred roles
-                    jobs = await adapter.discover_jobs(query=role, limit=100)
+                    jobs = await adapter.discover_jobs(query=role, location=location, limit=100)
                     total_discovered += len(jobs)
 
                     for job_model in jobs:
