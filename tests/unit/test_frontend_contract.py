@@ -104,11 +104,16 @@ def test_health_check_rewrite_preserved():
 
 def test_documents_use_safe_download_not_raw_paths():
     src = PAGE.read_text(encoding="utf-8")
-    assert "Artifact Path" not in src, "raw internal paths must not be the primary UI"
-    assert src.count("Download") >= 1 and ">Open<" in src.replace("\n", ""), (
-        "documents need visible Open/Download actions"
-    )
-    assert "document.download_url" in src, "artifact access must use the safe API download URL"
+    detail = (ROOT / "services" / "frontend" / "app" / "applications" / "[id]" / "page.js").read_text(encoding="utf-8")
+    for component in (src, detail):
+        assert "Artifact Path" not in component, "raw internal paths must not be the primary UI"
+        for leaked in ("minio_key", "minio_bucket", "s3://", ":9000"):
+            assert leaked not in component.lower(), f"MinIO reference may not reach the browser: {leaked}"
+    # Documents table links through the safe /file endpoint (view), detail
+    # page adds open/download/link actions via STRINGS (i18n, no hardcoding).
+    assert "view_url" in src and "/file?download=0" in src
+    assert "STRINGS.viewFile" in src
+    assert "doc.download_url" in detail and "STRINGS.download" in detail
 
 
 def test_download_endpoint_streams_safely():

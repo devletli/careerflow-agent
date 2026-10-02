@@ -85,6 +85,7 @@ class GeneratedDocument(BaseModel):
 
     id: Optional[UUID] = None
     job_id: UUID
+    application_id: Optional[UUID] = None
     profile_id: Optional[UUID] = None
     type: str  # "cv" | "cover_letter"
     language: str  # "de" | "en"

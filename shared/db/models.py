@@ -113,6 +113,7 @@ class Document(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    application_id = Column(UUID(as_uuid=True), ForeignKey("applications.id", ondelete="SET NULL"), nullable=True, index=True)
     profile_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True)
     type = Column(String(64), nullable=False)  # cv, cover_letter
     language = Column(String(16), nullable=False)  # de, en
@@ -126,6 +127,7 @@ class Document(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
 
     job = relationship("Job", back_populates="documents")
+    application = relationship("Application", back_populates="documents")
     profile = relationship("Profile")
 
     __table_args__ = (
@@ -151,6 +153,7 @@ class Application(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now)
 
     job = relationship("Job", back_populates="applications")
+    documents = relationship("Document", back_populates="application")
     questions = relationship("ApplicationQuestion", back_populates="application", cascade="all, delete-orphan")
     answers = relationship("ApplicationAnswer", back_populates="application", cascade="all, delete-orphan")
 

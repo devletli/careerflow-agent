@@ -7,7 +7,7 @@ from sqlalchemy import select
 from shared.config import settings
 from shared.contracts.events import DocumentsGeneratedEvent
 from shared.contracts.models import PipelineStatus
-from shared.db.models import Job, JobMatch, Document
+from shared.db.models import Application, Job, JobMatch, Document
 from shared.db.session import get_session, check_db_health
 from shared.infra.redis_bus import RedisEventBus
 from shared.profile.loader import load_canonical_profile
@@ -64,6 +64,15 @@ class CVGeneratorWorker:
                 job.status = PipelineStatus.DOC_REVIEW_REQUIRED.value
                 return False
 
+            # Link fresh documents to the latest application of this job, if any.
+            stmt_a = (
+                select(Application.id)
+                .where(Application.job_id == job.id)
+                .order_by(Application.created_at.desc())
+                .limit(1)
+            )
+            latest_app_id = (await session.execute(stmt_a)).scalars().first()
+
             # Persist to database
             for doc_model in generated_docs:
                 # Check if document already exists
@@ -79,6 +88,7 @@ class CVGeneratorWorker:
                     db_doc = Document(
                         id=uuid4(),
                         job_id=job.id,
+                        application_id=latest_app_id,
                         type=doc_model.type,
                         language=doc_model.language,
                         version=doc_model.version,
@@ -97,6 +107,8 @@ class CVGeneratorWorker:
                     existing.mime_type = doc_model.mime_type
                     existing.content_hash = doc_model.content_hash
                     existing.metadata_json = doc_model.metadata
+                    if existing.application_id is None:
+                        existing.application_id = latest_app_id
 
             job.status = PipelineStatus.DOCUMENTS_READY.value
 

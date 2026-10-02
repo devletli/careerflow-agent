@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from io import BytesIO
 from uuid import UUID, uuid4
 
@@ -223,35 +224,79 @@ async def list_jobs(
 async def list_applications(
     limit: int = Query(default=100, le=100),
     offset: int = 0,
+    q: Optional[str] = Query(default=None, description="Search company/title/URL"),
+    status: Optional[str] = Query(default=None, description="Filter by application status"),
+    min_score: Optional[float] = Query(default=None, description="Minimum match score"),
     session: AsyncSession = Depends(get_db_session),
 ):
+    match_score = (
+        select(JobMatch.overall_score)
+        .where(JobMatch.job_id == Application.job_id)
+        .correlate(Application)
+        .scalar_subquery()
+    )
     stmt = (
-        select(Application, Job.company, Job.title, Job.application_url, Job.url)
+        select(Application, Job.company, Job.title, Job.application_url, Job.url, match_score)
         .join(Job, Job.id == Application.job_id)
         .order_by(desc(Application.created_at))
         .offset(offset)
         .limit(limit)
     )
+    if q:
+        like = f"%{q}%"
+        stmt = stmt.where(
+            (Job.company.ilike(like)) | (Job.title.ilike(like)) | (Job.url.ilike(like))
+        )
+    if status:
+        stmt = stmt.where(Application.status == status)
+    if min_score is not None:
+        stmt = stmt.where(match_score >= min_score)
     res = await session.execute(stmt)
     rows = res.all()
-    return [
-        {
-            "id": str(a.id),
-            "job_id": str(a.job_id),
-            "company": company,
-            "title": title,
-            "application_url": application_url or job_url,
-            "candidate_id": a.candidate_id,
-            "status": a.status,
-            "automation_mode": a.automation_mode,
-            "attempts": a.attempts,
-            "blocked_reason": a.blocked_reason,
-            "failure_reason": a.failure_reason,
-            "application_fingerprint": a.application_fingerprint,
-            "created_at": a.created_at.isoformat() if a.created_at else None,
-        }
-        for a, company, title, application_url, job_url in rows
-    ]
+
+    # Document summary per application job (latest CV/cover-letter ids).
+    job_ids = list({a.job_id for a, *_ in rows})
+    docs_by_job: dict = {}
+    if job_ids:
+        dres = await session.execute(
+            select(Document).where(Document.job_id.in_(job_ids)).order_by(desc(Document.created_at))
+        )
+        for d in dres.scalars().all():
+            docs_by_job.setdefault(d.job_id, []).append(d)
+    out = []
+    for a, company, title, application_url, job_url, score in rows:
+        docs = docs_by_job.get(a.job_id, [])
+        latest: dict = {}
+        for d in docs:
+            key = (d.type, d.language)
+            if key not in latest or (d.version, d.created_at) > (latest[key].version, latest[key].created_at):
+                latest[key] = d
+        out.append(
+            {
+                "id": str(a.id),
+                "job_id": str(a.job_id),
+                "company": company,
+                "title": title,
+                "application_url": application_url or job_url,
+                "candidate_id": a.candidate_id,
+                "status": a.status,
+                "automation_mode": a.automation_mode,
+                "attempts": a.attempts,
+                "blocked_reason": a.blocked_reason,
+                "failure_reason": a.failure_reason,
+                "application_fingerprint": a.application_fingerprint,
+                "match_score": score,
+                "documents": {
+                    "count": len(docs),
+                    "latest": [
+                        {"id": str(d.id), "type": d.type, "language": d.language}
+                        for d in latest.values()
+                    ],
+                },
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+            }
+        )
+    return out
 
 
 @app.get("/api/v1/applications/{application_id}/desktop-context", dependencies=[ApiKey])
@@ -326,34 +371,68 @@ async def get_desktop_application_context(
 @app.get("/api/v1/documents", dependencies=[ApiKey])
 async def list_documents(
     limit: int = Query(default=100, le=100),
+    offset: int = 0,
+    q: Optional[str] = Query(default=None, description="Search company/title/type"),
+    type: Optional[str] = Query(default=None, description="Filter by document type (cv, cover_letter)"),
+    application_id: Optional[UUID] = Query(default=None, description="Filter by linked application"),
     session: AsyncSession = Depends(get_db_session),
 ):
-    stmt = select(Document).order_by(desc(Document.created_at)).limit(limit)
+    stmt = (
+        select(Document, Job.company, Job.title, Application.id, Application.status)
+        .join(Job, Job.id == Document.job_id)
+        .outerjoin(Application, Application.id == Document.application_id)
+        .order_by(desc(Document.created_at))
+        .offset(offset)
+        .limit(limit)
+    )
+    if q:
+        like = f"%{q}%"
+        stmt = stmt.where(
+            (Job.company.ilike(like)) | (Job.title.ilike(like)) | (Document.type.ilike(like))
+        )
+    if type:
+        stmt = stmt.where(Document.type == type)
+    if application_id is not None:
+        stmt = stmt.where(Document.application_id == application_id)
     res = await session.execute(stmt)
-    documents = res.scalars().all()
+    rows = res.all()
+
+    # Latest = highest version (then newest) per (job, type, language).
+    newest: dict = {}
+    for document, *_ in rows:
+        key = (document.job_id, document.type, document.language)
+        current = newest.get(key)
+        if current is None or (document.version, document.created_at) > (current.version, current.created_at):
+            newest[key] = document
+    latest_ids = {d.id for d in newest.values()}
+
     return [
         {
             "id": str(document.id),
             "job_id": str(document.job_id),
+            "application": (
+                {"id": str(app_id), "status": app_status}
+                if app_id is not None
+                else None
+            ),
+            "company": company,
+            "job_title": job_title,
             "type": document.type,
             "language": document.language,
             "version": document.version,
+            "is_latest": document.id in latest_ids,
             "mime_type": document.mime_type,
             "metadata": document.metadata_json,
-            "artifact_relative_path": document.metadata_json.get("artifact_relative_path"),
             "created_at": document.created_at.isoformat() if document.created_at else None,
-            "download_url": f"/api/v1/documents/{document.id}/download",
+            "view_url": f"/api/v1/documents/{document.id}/file?download=0",
+            "download_url": f"/api/v1/documents/{document.id}/file?download=1",
         }
-        for document in documents
+        for document, company, job_title, app_id, app_status in rows
     ]
 
 
-@app.get("/api/v1/documents/{document_id}/download", dependencies=[ApiKey])
-async def download_document(
-    document_id: UUID,
-    session: AsyncSession = Depends(get_db_session),
-):
-    """Streams a private artifact through the API without exposing MinIO credentials."""
+async def _stream_document_bytes(document_id: UUID, session: AsyncSession) -> tuple:
+    """Loads a private artifact from MinIO (never exposes bucket URLs)."""
     document = await session.get(Document, document_id)
     if document is None:
         raise HTTPException(
@@ -372,17 +451,372 @@ async def download_document(
             status_code=http_status.HTTP_502_BAD_GATEWAY,
             detail="Document storage is unavailable.",
         ) from exc
+    return document, content
 
+
+def _document_filename(document) -> str:
     filename = f"{document.type}_{document.language}_v{document.version}"
     if document.mime_type == "application/pdf":
         filename += ".pdf"
     elif "wordprocessingml" in document.mime_type:
         filename += ".docx"
+    return filename
+
+
+@app.get("/api/v1/documents/{document_id}/file", dependencies=[ApiKey])
+async def get_document_file(
+    document_id: UUID,
+    download: bool = Query(default=False, description="True for attachment download, False for inline view"),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Streams a private artifact; inline view or attachment download."""
+    document, content = await _stream_document_bytes(document_id, session)
+    disposition = "attachment" if download else "inline"
     return StreamingResponse(
         BytesIO(content),
         media_type=document.mime_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f'{disposition}; filename="{_document_filename(document)}"'},
     )
+
+
+@app.get("/api/v1/documents/{document_id}/download", dependencies=[ApiKey])
+async def download_document(
+    document_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Legacy attachment download (kept for compatibility; prefer /file)."""
+    document, content = await _stream_document_bytes(document_id, session)
+    return StreamingResponse(
+        BytesIO(content),
+        media_type=document.mime_type,
+        headers={"Content-Disposition": f'attachment; filename="{_document_filename(document)}"'},
+    )
+
+
+class DocumentLinkRequest(BaseModel):
+    application_id: Optional[UUID] = None
+
+
+class ApplicationNotesRequest(BaseModel):
+    notes: str = ""
+
+
+class ManualApplicationRequest(BaseModel):
+    url: str
+
+
+@app.get("/api/v1/applications/{application_id}", dependencies=[ApiKey])
+async def get_application_detail(
+    application_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Central application record: job, score, documents, form analysis, events."""
+    application = await session.get(Application, application_id)
+    if application is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Application not found.",
+        )
+    job = await session.get(Job, application.job_id)
+    match = (
+        await session.execute(select(JobMatch).where(JobMatch.job_id == application.job_id))
+    ).scalars().first()
+    docs = (
+        await session.execute(
+            select(Document)
+            .where(Document.job_id == application.job_id)
+            .order_by(desc(Document.version), desc(Document.created_at))
+        )
+    ).scalars().all()
+    newest: dict = {}
+    for d in docs:
+        key = (d.type, d.language)
+        if key not in newest:
+            newest[key] = d.id
+    questions = (
+        await session.execute(
+            select(ApplicationQuestion).where(ApplicationQuestion.application_id == application.id)
+        )
+    ).scalars().all()
+    answers = (
+        await session.execute(
+            select(ApplicationAnswer).where(ApplicationAnswer.application_id == application.id)
+        )
+    ).scalars().all()
+    answer_by_q = {a.question_id: a for a in answers}
+    events = (
+        await session.execute(
+            select(PipelineEvent)
+            .where(PipelineEvent.entity_id.in_([str(application.id), str(application.job_id)]))
+            .order_by(desc(PipelineEvent.created_at))
+            .limit(50)
+        )
+    ).scalars().all()
+    return {
+        "id": str(application.id),
+        "job_id": str(application.job_id),
+        "company": job.company if job else None,
+        "title": job.title if job else None,
+        "job": (
+            {
+                "id": str(job.id),
+                "company": job.company,
+                "title": job.title,
+                "url": job.url,
+                "application_url": job.application_url,
+                "location": job.location,
+                "remote_status": job.remote_status,
+                "status": job.status,
+            }
+            if job
+            else None
+        ),
+        "status": application.status,
+        "automation_mode": application.automation_mode,
+        "attempts": application.attempts,
+        "blocked_reason": application.blocked_reason,
+        "failure_reason": application.failure_reason,
+        "application_url": (job.application_url or job.url) if job else None,
+        "notes": (application.submission_metadata or {}).get("notes", ""),
+        "match": (
+            {
+                "overall_score": match.overall_score,
+                "qualification_status": match.qualification_status,
+                "explanation": match.explanation,
+                "matching_skills": match.matching_skills,
+                "missing_skills": match.missing_skills,
+            }
+            if match
+            else None
+        ),
+        "documents": [
+            {
+                "id": str(d.id),
+                "type": d.type,
+                "language": d.language,
+                "version": d.version,
+                "is_latest": newest.get((d.type, d.language)) == d.id,
+                "linked": d.application_id == application.id,
+                "mime_type": d.mime_type,
+                "view_url": f"/api/v1/documents/{d.id}/file?download=0",
+                "download_url": f"/api/v1/documents/{d.id}/file?download=1",
+                "created_at": d.created_at.isoformat() if d.created_at else None,
+            }
+            for d in docs
+        ],
+        "questions": [
+            {
+                "id": str(q.id),
+                "key": q.question_key,
+                "text": q.question_text,
+                "type": q.question_type,
+                "is_required": q.is_required,
+                "classification": q.classification,
+                "answer": (
+                    {
+                        "value": (answer_by_q[q.id].answer_value or {}).get("value"),
+                        "source": answer_by_q[q.id].answer_source,
+                        "is_verified": answer_by_q[q.id].is_verified,
+                    }
+                    if q.id in answer_by_q
+                    else None
+                ),
+            }
+            for q in questions
+        ],
+        "events": [
+            {
+                "event_id": str(e.event_id),
+                "event_type": e.event_type,
+                "correlation_id": e.correlation_id,
+                "timestamp": e.timestamp.isoformat() if e.timestamp else None,
+            }
+            for e in events
+        ],
+        "created_at": application.created_at.isoformat() if application.created_at else None,
+    }
+
+
+@app.patch("/api/v1/applications/{application_id}/documents/{doc_id}", dependencies=[ApiKey])
+async def link_document(
+    application_id: UUID,
+    doc_id: UUID,
+    request: DocumentLinkRequest,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Manually links a document to an application (or unlinks with null)."""
+    application = await session.get(Application, application_id)
+    if application is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Application not found.",
+        )
+    document = await session.get(Document, doc_id)
+    if document is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Document not found.",
+        )
+    target_id = request.application_id
+    if target_id is not None:
+        target = await session.get(Application, target_id)
+        if target is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail="Target application not found.",
+            )
+        if target.job_id != document.job_id:
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Document and application belong to different jobs.",
+            )
+        document.application_id = target.id
+    else:
+        document.application_id = None
+    return {
+        "id": str(document.id),
+        "application_id": str(document.application_id) if document.application_id else None,
+    }
+
+
+@app.patch("/api/v1/applications/{application_id}", dependencies=[ApiKey])
+async def update_application_notes(
+    application_id: UUID,
+    request: ApplicationNotesRequest,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Stores free-form reviewer notes inside submission_metadata (no schema change)."""
+    application = await session.get(Application, application_id)
+    if application is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Application not found.",
+        )
+    metadata = dict(application.submission_metadata or {})
+    metadata["notes"] = request.notes
+    application.submission_metadata = metadata
+    return {"id": str(application.id), "notes": request.notes}
+
+
+@app.post("/api/v1/applications/manual", dependencies=[ApiKey])
+async def create_manual_application(
+    request: ManualApplicationRequest,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Creates a Job + Application from a posting URL (idempotent by fingerprint)."""
+    from urllib.parse import urlparse
+
+    from shared.contracts.fingerprint import (
+        compute_application_fingerprint,
+        compute_job_fingerprint,
+    )
+    from shared.contracts.models import PipelineStatus
+
+    url = (request.url or "").strip()
+    if not url:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A posting URL is required.",
+        )
+    parsed = urlparse(url if "://" in url else f"https://{url}")
+    domain = (parsed.netloc or "").removeprefix("www.")
+    if not domain:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Could not parse a domain from the URL.",
+        )
+    company = domain
+    title = f"Manual application ({domain})"
+    source_job_id = hashlib.sha256(url.encode("utf-8")).hexdigest()
+    job_fp = compute_job_fingerprint(company, title, url)
+
+    res = await session.execute(
+        select(Job).where((Job.source == "manual") & (Job.source_job_id == source_job_id))
+    )
+    job = res.scalars().first()
+    job_created = False
+    if job is None:
+        job = Job(
+            id=uuid4(),
+            source="manual",
+            source_job_id=source_job_id,
+            company=company,
+            title=title,
+            url=url,
+            application_url=url,
+            job_fingerprint=job_fp,
+            status=PipelineStatus.NORMALIZED.value,
+        )
+        session.add(job)
+        job_created = True
+
+    candidate_id = "manual"
+    app_fp = compute_application_fingerprint(candidate_id, job.job_fingerprint)
+    res_a = await session.execute(
+        select(Application).where(Application.application_fingerprint == app_fp)
+    )
+    application = res_a.scalars().first()
+    app_created = False
+    if application is None:
+        application = Application(
+            id=uuid4(),
+            job_id=job.id,
+            candidate_id=candidate_id,
+            application_fingerprint=app_fp,
+            status=PipelineStatus.READY_TO_APPLY.value,
+            automation_mode=settings.AUTOMATION_MODE,
+        )
+        session.add(application)
+        app_created = True
+
+    await session.flush()
+    status_code = (
+        http_status.HTTP_201_CREATED if (job_created or app_created) else http_status.HTTP_200_OK
+    )
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "created": job_created or app_created,
+            "job": {"id": str(job.id), "company": job.company, "title": job.title},
+            "application": {"id": str(application.id), "status": application.status},
+        },
+    )
+
+
+@app.patch("/api/v1/documents/backfill", dependencies=[ApiKey])
+async def backfill_document_application_links(
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Backfill application_id for documents by matching via job_id.
+    
+    For each document with application_id=NULL, find applications sharing
+    the same job_id and link them. If a job has multiple applications,
+    the document stays unlinked to avoid ambiguity.
+    """
+    from sqlalchemy import select, func
+
+    # Find all documents without an application link.
+    doc_stmt = select(Document).where(Document.application_id.is_(None))
+    doc_res = await session.execute(doc_stmt)
+    documents = doc_res.scalars().all()
+
+    # Group applications by job_id.
+    app_stmt = select(Application.job_id, Application.id).distinct(Application.job_id)
+    app_res = await session.execute(app_stmt)
+    apps_by_job: dict = {}
+    for job_id, app_id in app_res.all():
+        apps_by_job.setdefault(job_id, []).append(app_id)
+
+    linked = 0
+    for doc in documents:
+        matching_apps = apps_by_job.get(doc.job_id, [])
+        if len(matching_apps) == 1:
+            doc.application_id = matching_apps[0]
+            linked += 1
+        # If 0 or >1 matching applications, leave document unlinked.
+
+    await session.commit()
+    return {"linked": linked, "total_documents_without_app": len(documents)}
 
 
 @app.get("/api/v1/events", dependencies=[ApiKey])

@@ -138,6 +138,45 @@ function Toolbar({ label, onRefresh, count }) {
   );
 }
 
+function SearchBar({ value, onChange, statusValue, onStatusChange, statuses, minScore, onMinScoreChange, showScore }) {
+  return (
+    <div className="search-bar">
+      <input
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={STRINGS.searchPlaceholder}
+        aria-label={STRINGS.searchPlaceholder}
+      />
+      {statuses && (
+        <select value={statusValue} onChange={(e) => onStatusChange(e.target.value)} aria-label={STRINGS.colStatus}>
+          <option value="">{STRINGS.allStatuses}</option>
+          {statuses.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+      )}
+      {showScore && (
+        <label className="muted">
+          {STRINGS.minScore}
+          <input
+            type="number"
+            min="0"
+            max="100"
+            value={minScore}
+            onChange={(e) => onMinScoreChange(e.target.value)}
+            aria-label={STRINGS.minScore}
+          />
+        </label>
+      )}
+    </div>
+  );
+}
+
+function distinctStatuses(rows) {
+  return [...new Set((rows || []).map((r) => r.status).filter(Boolean))].sort();
+}
+
 const ACTIONS = STRINGS.actions;
 
 function ActionPanel({ onRun, runningAction, actionMessage }) {
@@ -222,9 +261,16 @@ function OverviewTab({ status, jobs, applications, events, eventsLoading, onRun,
 }
 
 function JobsTab({ jobs, error, loading, refresh }) {
+  const [query, setQuery] = useState("");
+  const filtered = (jobs || []).filter((j) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return `${j.title || ""} ${j.company || ""} ${j.url || ""}`.toLowerCase().includes(q);
+  });
   return (
     <div className="panel">
-      <Toolbar label="Discovered / matched jobs" onRefresh={refresh} count={jobs?.length} />
+      <Toolbar label="Discovered / matched jobs" onRefresh={refresh} count={filtered?.length} />
+      <SearchBar value={query} onChange={setQuery} />
       {error && <div className="error-banner">{error}</div>}
       <table className="responsive">
         <thead>
@@ -239,7 +285,7 @@ function JobsTab({ jobs, error, loading, refresh }) {
           </tr>
         </thead>
         <tbody>
-          {(jobs || []).map((j) => (
+          {filtered.map((j) => (
             <tr key={j.id}>
               <td data-label="Job" className="cell-main">
                 <div className="cell-title" title={j.title}>{j.title}</div>
@@ -263,7 +309,7 @@ function JobsTab({ jobs, error, loading, refresh }) {
               </td>
             </tr>
           ))}
-          {(!jobs || jobs.length === 0) && (
+          {filtered.length === 0 && (
             <tr>
               <td colSpan={7} className="muted">
                 {loading ? "Loading…" : "No jobs discovered yet."}
@@ -276,36 +322,137 @@ function JobsTab({ jobs, error, loading, refresh }) {
   );
 }
 
+function UrlAddDialog({ open, onClose, onAdded }) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  if (!open) return null;
+  const submit = async () => {
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await fetchJson("/api/v1/applications/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      setUrl("");
+      onAdded(result);
+    } catch (e) {
+      setMessage(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="dialog-backdrop">
+      <div className="dialog">
+        <h3 style={{ marginTop: 0 }}>{STRINGS.urlDialogTitle}</h3>
+        <input
+          type="url"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder={STRINGS.urlPlaceholder}
+          aria-label={STRINGS.urlPlaceholder}
+        />
+        {message && <div className="error-banner">{message}</div>}
+        <div className="application-actions">
+          <button className="refresh-btn" onClick={onClose} disabled={busy}>
+            {STRINGS.cancel}
+          </button>
+          <button className="refresh-btn primary-btn" onClick={submit} disabled={busy || !url.trim()}>
+            {STRINGS.add}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DocBadges({ docs }) {
+  const latest = docs?.latest || [];
+  if (!latest.length) return <span className="muted">-</span>;
+  return (
+    <span className="doc-badges">
+      {latest.map((d) => (
+        <a
+          key={d.id}
+          className="link doc-badge"
+          href={`/api/v1/documents/${d.id}/file?download=0`}
+          target="_blank"
+          rel="noreferrer"
+          title={`${d.type} (${d.language})`}
+        >
+          {d.type === "cover_letter" ? "CL" : "CV"}
+          <span className="lang-badge">{d.language.toUpperCase()}</span>
+        </a>
+      ))}
+    </span>
+  );
+}
+
 function ApplicationsTab({ applications, error, loading, refresh, onSubmit, submittingApplicationId }) {
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [minScore, setMinScore] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [notice, setNotice] = useState("");
+  const filtered = (applications || []).filter((a) => {
+    const q = query.trim().toLowerCase();
+    const matchesQ = !q || `${a.company || ""} ${a.title || ""}`.toLowerCase().includes(q);
+    const matchesS = !statusFilter || a.status === statusFilter;
+    const matchesScore = !minScore || (a.match_score ?? -1) >= Number(minScore);
+    return matchesQ && matchesS && matchesScore;
+  });
   return (
     <div className="panel">
-      <Toolbar label="Application history" onRefresh={refresh} count={applications?.length} />
+      <Toolbar label="Application history" onRefresh={refresh} count={filtered?.length} />
+      <div className="toolbar">
+        <button className="refresh-btn primary-btn" onClick={() => setDialogOpen(true)}>
+          {STRINGS.addViaUrl}
+        </button>
+      </div>
+      {notice && <div className="action-message">{notice}</div>}
+      <SearchBar
+        value={query}
+        onChange={setQuery}
+        statusValue={statusFilter}
+        onStatusChange={setStatusFilter}
+        statuses={distinctStatuses(applications)}
+        minScore={minScore}
+        onMinScoreChange={setMinScore}
+        showScore
+      />
       {error && <div className="error-banner">{error}</div>}
       <table className="responsive">
         <thead>
           <tr>
-            <th>Application</th>
-            <th>Status</th>
-            <th>Details</th>
-            <th>Created</th>
-            <th>Actions</th>
+            <th>{STRINGS.colJob}</th>
+            <th>{STRINGS.colScore}</th>
+            <th>{STRINGS.colStatus}</th>
+            <th>{STRINGS.colDocs}</th>
+            <th>{STRINGS.colUpdated}</th>
+            <th>{STRINGS.colActions}</th>
           </tr>
         </thead>
         <tbody>
-          {(applications || []).map((a) => (
+          {filtered.map((a) => (
             <tr key={a.id}>
-              <td data-label="Application" className="cell-main">
-                <div className="cell-title" title={`${a.company} — ${a.title}`}>{a.company} — {a.title}</div>
-                <div className="cell-sub">{a.automation_mode} • attempts: {a.attempts} • {a.job_id.slice(0, 8)}…</div>
-              </td>
-              <td data-label="Status"><StatusPill status={a.status} /></td>
-              <td data-label="Details" className="cell-main">
+              <td data-label={STRINGS.colJob} className="cell-main">
+                <div className="cell-title" title={`${a.company} — ${a.title}`}>
+                  <a className="link" href={`/applications/${a.id}`}>{a.company} — {a.title}</a>
+                </div>
                 <div className="cell-sub" title={a.blocked_reason || a.failure_reason || ""}>
-                  {a.blocked_reason || a.failure_reason || "-"}
+                  {a.blocked_reason || a.failure_reason || `${a.automation_mode} • attempts: ${a.attempts}`}
                 </div>
               </td>
-              <td data-label="Created" className="cell-wrap">{formatDate(a.created_at)}</td>
-              <td data-label="Actions" className="application-actions">
+              <td data-label={STRINGS.colScore} className="cell-main">
+                <div className="cell-title">{a.match_score ?? "-"}</div>
+              </td>
+              <td data-label={STRINGS.colStatus}><StatusPill status={a.status} /></td>
+              <td data-label={STRINGS.colDocs}><DocBadges docs={a.documents} /></td>
+              <td data-label={STRINGS.colUpdated} className="cell-wrap">{formatDate(a.created_at)}</td>
+              <td data-label={STRINGS.colActions} className="application-actions">
                 <a
                   className="link"
                   href={a.application_url}
@@ -330,57 +477,95 @@ function ApplicationsTab({ applications, error, loading, refresh, onSubmit, subm
               </td>
             </tr>
           ))}
-          {(!applications || applications.length === 0) && (
+          {filtered.length === 0 && (
             <tr>
-              <td colSpan={5} className="muted">
+              <td colSpan={6} className="muted">
                 {loading ? "Loading…" : "No applications yet."}
               </td>
             </tr>
           )}
         </tbody>
       </table>
+      <UrlAddDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onAdded={(result) => {
+          setDialogOpen(false);
+          setNotice(`${result.application.id.slice(0, 8)}…`);
+          refresh();
+        }}
+      />
     </div>
   );
 }
 
+function docTypeLabel(type) {
+  return type === "cover_letter" ? "CL" : "CV";
+}
+
 function DocumentsTab({ documents, error, loading, refresh }) {
+  const [query, setQuery] = useState("");
+  const filtered = (documents || []).filter((d) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return `${d.company || ""} ${d.job_title || ""} ${d.type || ""}`.toLowerCase().includes(q);
+  });
   return (
     <div className="panel">
-      <Toolbar label="Generated CVs and cover letters" onRefresh={refresh} count={documents?.length} />
+      <Toolbar label="Generated CVs and cover letters" onRefresh={refresh} count={filtered?.length} />
+      <SearchBar value={query} onChange={setQuery} />
       {error && <div className="error-banner">{error}</div>}
       <table className="responsive">
         <thead>
           <tr>
-            <th>Document</th>
-            <th>Job</th>
-            <th>Language</th>
-            <th>Version</th>
-            <th>Created</th>
-            <th>Open</th>
+            <th>{STRINGS.colType}</th>
+            <th>{STRINGS.colJob}</th>
+            <th>{STRINGS.colApplication}</th>
+            <th>{STRINGS.colFile}</th>
           </tr>
         </thead>
         <tbody>
-          {(documents || []).map((document) => (
+          {filtered.map((document) => (
             <tr key={document.id}>
-              <td data-label="Document" className="cell-main">
-                <div className="cell-title" title={document.metadata?.filename || document.type}>{document.metadata?.filename || `${document.type === "cover_letter" ? "Cover Letter" : "CV"} (${document.language.toUpperCase()} v${document.version})`}</div>
+              <td data-label={STRINGS.colType} className="cell-main">
+                <div className="cell-title">
+                  {docTypeLabel(document.type)}
+                  <span className="lang-badge">{document.language.toUpperCase()}</span>
+                  {document.is_latest && <span className="latest-badge">{STRINGS.latestBadge}</span>}
+                </div>
+                <div className="cell-sub" title={document.created_at}>
+                  {document.created_at}
+                </div>
               </td>
-              <td data-label="Job">{document.metadata?.company || document.job_id.slice(0, 8)}</td>
-              <td data-label="Language">{document.language.toUpperCase()}</td>
-              <td data-label="Version">{document.version}</td>
-              <td data-label="Created" className="cell-wrap">{formatDate(document.created_at)}</td>
-              <td data-label="Open" className="document-actions">
-                <a className="link" href={document.download_url} target="_blank" rel="noreferrer">
-                  Open
-                </a>
-                <a className="link" href={document.download_url} download>
-                  Download
+              <td data-label={`${STRINGS.colCompany} · ${STRINGS.colJob}`} className="cell-main">
+                <div className="cell-title" title={`${document.company} — ${document.job_title}`}>
+                  {document.company} — {document.job_title}
+                </div>
+              </td>
+              <td data-label={STRINGS.colApplication} className="cell-main">
+                {document.application ? (
+                  <a className="link" href={`/applications/${document.application.id}`}>
+                    <StatusPill status={document.application.status} />
+                  </a>
+                ) : (
+                  <span className="muted">{STRINGS.unlinked}</span>
+                )}
+              </td>
+              <td data-label={STRINGS.colFile} className="document-actions">
+                <a
+                  className="link"
+                  href={document.view_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={STRINGS.viewFile}
+                >
+                  {STRINGS.viewFile}
                 </a>
               </td>
             </tr>
           ))}
-          {(!documents || documents.length === 0) && (
-            <tr><td colSpan={6} className="muted">{loading ? "Loading…" : "No documents generated yet."}</td></tr>
+          {filtered.length === 0 && (
+            <tr><td colSpan={4} className="muted">{loading ? "Loading…" : "No documents generated yet."}</td></tr>
           )}
         </tbody>
       </table>
