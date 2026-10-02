@@ -32,8 +32,22 @@ def test_tables_scroll_inside_panel():
 def test_scroll_css_rules_exist():
     css = CSS.read_text(encoding="utf-8")
     assert re.search(r"\.table-scroll\s*\{[^}]*overflow-x:\s*auto", css), ".table-scroll needs overflow-x:auto"
+    assert ".table-scroll" in css and "margin: 0 -20px" not in css, (
+        "full-bleed negative margins let row borders escape the panel; "
+        "the scroll container must stay inside the panel padding"
+    )
     assert re.search(r"\.tabs\s*\{[^}]*overflow-x:\s*auto", css), ".tabs needs overflow-x:auto"
     assert re.search(r"\.tab\s*\{[^}]*white-space:\s*nowrap", css), ".tab needs white-space:nowrap"
+
+
+def test_action_cells_keep_buttons_visible():
+    css = CSS.read_text(encoding="utf-8")
+    src = PAGE.read_text(encoding="utf-8")
+    assert "actions-cell" in src, "action columns must opt out of cell truncation"
+    assert re.search(r"td\.actions-cell\s*\{[^}]*max-width:\s*none", css), (
+        "action cells must not be capped at the truncated cell width"
+    )
+    assert "flex-shrink: 0" in css, "action buttons must not shrink"
 
 
 def test_tables_show_loading_state():

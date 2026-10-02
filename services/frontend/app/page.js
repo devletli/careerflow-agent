@@ -264,7 +264,7 @@ function ApplicationsTab({ applications, error, loading, refresh, onSubmit, subm
               <td title={a.blocked_reason || ""}>{a.blocked_reason || "-"}</td>
               <td title={a.failure_reason || ""}>{a.failure_reason || "-"}</td>
               <td>{formatDate(a.created_at)}</td>
-              <td className="application-actions">
+              <td className="actions-cell application-actions">
                 <a
                   className="link"
                   href={a.application_url}
@@ -328,7 +328,7 @@ function DocumentsTab({ documents, error, loading, refresh }) {
               <td>{document.language.toUpperCase()}</td>
               <td>{document.version}</td>
               <td>{formatDate(document.created_at)}</td>
-              <td className="document-actions">
+              <td className="actions-cell document-actions">
                 <a className="link" href={document.download_url} target="_blank" rel="noreferrer">
                   Open
                 </a>

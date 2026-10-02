@@ -158,12 +158,17 @@ tr:hover td {
   background: var(--panel-alt);
 }
 
-/* Wide tables (jobs/applications/documents/events) scroll inside the panel
-   instead of overflowing the viewport, so action columns stay reachable. */
+/* Wide tables (jobs/applications/documents/events) scroll inside the padded
+   panel instead of overflowing the viewport, so action columns stay reachable
+   without breaking the panel's borders. */
 .table-scroll {
   overflow-x: auto;
-  margin: 0 -20px;
-  padding: 0 20px;
+}
+
+/* Action cells must never truncate buttons: they keep natural width and wrap. */
+.table-scroll td.actions-cell {
+  max-width: none;
+  white-space: normal;
 }
 
 a.link {
@@ -277,6 +282,12 @@ a.link:hover {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.application-actions > *,
+.document-actions > * {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .document-actions {

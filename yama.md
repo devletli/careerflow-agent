@@ -1,1008 +1,560 @@
-You are working inside the EXISTING LOCAL repository:
+You are working on the existing local repository `careerflow-agent`.
 
-careerflow-agent
+IMPORTANT WORKFLOW RULES:
 
-This is NOT a greenfield implementation.
+* The repository is already implemented. Do NOT restart or redesign the project.
+* First inspect the CURRENT working tree and the CURRENT implementation.
+* The user commits changes manually. DO NOT run `git commit`, `git push`, `git reset --hard`, or rewrite git history.
+* Make only the changes required for this task.
+* Do not create placeholder components, TODOs, fake data, mock UI, or pseudocode.
+* Do not modify the matching algorithm, database schema, orchestrator, browser-agent architecture, or document-generation architecture unless you find a concrete regression directly caused by the Applications UI.
+* Preserve all existing functionality.
+* This is a real bug-fix task, not a visual redesign.
 
-The application already contains:
+## PRIMARY BUG
 
-* Next.js frontend
-* API service
-* job discovery
-* deterministic job matching
-* LLM-assisted explanations
-* CV/document generation
-* application analysis
-* Playwright browser automation
-* PostgreSQL
-* Redis
-* MinIO
-* orchestrator/pipeline
-* Docker Compose
+The `Applications` dashboard tab is STILL not displayed at the correct width.
 
-The previous changes introduced evaluation/testing/CI work and English UI.
+Previous attempts to fix it made the situation worse. Therefore DO NOT simply add more padding, increase arbitrary widths, or add another `overflow-x-auto`.
 
-The current application now has quality problems.
-
-The user specifically reports:
-
-1. The Applications tab has become visually smaller / worse.
-2. Some buttons/actions are not visible or do not fit.
-3. The Documents tab displays `Artifact Path` as plain text instead of a useful clickable document link.
-4. Generated documents are extremely basic and visually poor.
-5. There may be service/API integration problems.
-6. The UI needs a complete practical review rather than another isolated CSS fix.
-
-Your task is to perform a REAL LOCAL CODE REVIEW first, then implement a focused stabilization/product-quality patch.
-
----
-
-# ABSOLUTE GIT RULE
-
-The user will commit manually.
-
-DO NOT:
-
-* git commit
-* git push
-* amend commits
-* reset
-* rebase
-* rewrite history
-* create branches
-
-You may use:
-
-git status
-git log
-git diff
-git diff --stat
-
-All changes must remain uncommitted in the local working tree.
-
----
-
-# PART 1 — FULL REPOSITORY DISCOVERY
-
-Before modifying anything, inspect the repository thoroughly.
-
-Do NOT guess filenames.
-
-First discover the actual structure.
-
-Inspect:
-
-* frontend/
-* services/
-* shared/
-* db/
-* tests/
-* scripts/
-* docker-compose.yml
-* README.md
-* architecture.md
-* data-model.md
-* implementation-plan.md
-* SPEC.md
-
-Also inspect package/dependency files:
-
-* package.json
-* pyproject.toml
-* requirements files
-* Dockerfiles
-* tsconfig
-* Next.js configuration
-* Tailwind/config files if present
-
-Find the ACTUAL files implementing:
-
-## Frontend
-
-* application dashboard
-* Applications tab/page
-* Documents tab/page
-* document/artifact list
-* job cards
-* application cards
-* navigation/sidebar
-* header
-* buttons/actions
-* modals/dialogs
-* responsive layout
-* API client/hooks
-
-## Backend
-
-Find actual implementations for:
-
-* applications API
-* documents/artifacts API
-* MinIO storage
-* document generation
-* CV generation
-* cover-letter generation
-* application analysis
-* browser automation
-* service-to-service communication
-
-Do not invent paths.
-
-At the beginning of the work, produce an internal map like:
-
-Frontend: <actual file paths>
-
-Applications: <actual file paths>
-
-Documents: <actual file paths>
-
-Document generation: <actual file paths>
-
-Artifact storage: <actual file paths>
-
-API: <actual file paths>
-
-Do not create a new architecture document just for this task unless absolutely necessary.
-
----
-
-# PART 2 — RUN THE CURRENT APPLICATION BEFORE CHANGING IT
-
-This is mandatory.
-
-Use the repository's documented startup process.
-
-Prefer:
-
-docker compose up --build
-
-if that is the intended development workflow.
-
-Check:
-
-* all containers start
-* no restart loops
-* API responds
-* frontend responds
-* PostgreSQL works
-* Redis works
-* MinIO works
-* service-to-service communication works
-
-Inspect logs.
-
-Look for:
-
-* connection refused
-* incorrect Docker hostname
-* incorrect ports
-* 404
-* 401
-* 403
-* 422
-* 500
-* timeout
-* CORS
-* missing environment variables
-* startup race conditions
-* failed migrations
-* MinIO errors
-* Redis errors
-
-Do not fix UI problems while ignoring broken backend services.
-
----
-
-# PART 3 — REAL FRONTEND AUDIT
-
-Open the actual frontend in a browser.
-
-Do not rely only on source-code inspection.
-
-Test at least:
-
-1440x900
-1280x800
-1024x768
-
-If practical also check:
-
-390x844
-
-The application is a portfolio project.
-
-The UI must look like a real usable professional dashboard.
-
-Audit:
-
-* Overview
-* Jobs
-* Applications
-* Documents
-* Events
-* Settings
-
-If a Documents tab does not exist as a dedicated route/tab, locate where generated artifacts are displayed.
-
----
-
-# PART 4 — APPLICATIONS TAB
-
-This is HIGH PRIORITY.
-
-The user reports that the Applications tab became smaller/worse after previous changes.
-
-Find the ROOT CAUSE.
-
-Inspect:
-
-* page/container width
-* sidebar width
-* main content width
-* card width
-* table width
-* grid columns
-* flex layout
-* max-width
-* min-width
-* padding
-* responsive breakpoints
-* action button layout
-
-Do not simply increase the entire application width blindly.
-
-The intended desktop layout should use the available viewport effectively.
-
-A reasonable target is:
-
-Sidebar:
-fixed but compact
-
-Main:
-flex: 1
-min-width: 0
-width: 100%
-
-Content:
-max-width only where it improves readability
-
-Application list:
-use available horizontal space
-
-Application card/table:
-actions remain visible
-
-If the application list is card-based, cards should not become unnecessarily narrow.
-
-If table-based, use horizontal scrolling only when truly necessary.
-
-Action buttons must remain visible.
-
-If there are several actions, use:
-
-display:flex;
-flex-wrap:wrap;
-gap:...
-
-instead of fixed widths that cause clipping.
-
-DO NOT introduce arbitrary large fixed widths.
-
----
-
-# PART 5 — APPLICATION ACTIONS
-
-Inspect every application action.
-
-Examples may include:
-
-* Open Job
-* View Details
-* Generate CV
-* Generate Cover Letter
-* Analyze
-* Browser Fill
-* Open in Browser
-* Submit
-* Retry
-* Refresh
-* Delete
-
-Use the ACTUAL actions found in the code.
-
-For every action verify:
-
-UI button
-→ frontend handler
-→ API call
-→ backend route
-→ service
-→ database/storage
-→ response
-→ UI state update
-
-If a button exists but does nothing:
-
-find the actual cause.
-
-Do not hide the button.
-
-Do not remove functionality merely because it is currently broken.
-
----
-
-# PART 6 — DOCUMENTS / ARTIFACT PATH
-
-This is explicitly required.
-
-Find the actual frontend component that displays:
-
-`Artifact Path`
-
-and find the backend/API response that provides that value.
-
-Currently it appears to expose a filesystem/object-storage path as plain text.
-
-That is NOT acceptable as the primary user experience.
-
-Determine how artifacts are stored.
-
-The repository documentation states that MinIO is the document/artifact store.
-
-Inspect the existing artifact storage implementation.
-
-DO NOT expose:
-
-* MinIO internal filesystem paths
-* server filesystem paths
-* private bucket paths
-* credentials
-* internal Docker paths
-
-Instead implement a proper user-facing document access mechanism.
-
-Preferred architecture:
-
-Frontend:
-Artifact name / document type
-+
-"Open"
-+
-"Download"
-
-Backend:
-provide a safe artifact access endpoint or presigned URL mechanism using the existing MinIO integration.
-
-The endpoint must:
-
-1. verify the artifact exists
-2. prevent arbitrary object access
-3. use the existing application/storage ownership model
-4. return a browser-accessible response or safe temporary URL
-5. preserve the original filename/content type where possible
-
-If the existing API already has a secure artifact endpoint, USE IT.
-
-Do not create a duplicate storage system.
-
-For the frontend, replace raw:
-
-Artifact Path:
-/some/internal/path/...
-
-with something like:
-
-Document
-resume.pdf
-
-[Open] [Download]
-
-or:
-
-CV — Senior DevOps Engineer
-[View] [Download]
-
-The raw internal artifact path should not be the main displayed value.
-
-You may retain it only as developer/debug metadata if genuinely useful.
-
----
-
-# PART 7 — DOCUMENT GENERATION QUALITY
-
-This is another HIGH PRIORITY problem.
-
-Inspect the complete document-generation pipeline.
-
-Trace:
-
-job
-→ candidate profile
-→ matching
-→ prompt
-→ generated content
-→ document renderer
-→ artifact storage
-→ frontend display
-
-Identify exactly what currently generates:
-
-* CV
-* cover letter
-* other documents
-
-Determine whether the output is:
-
-* plain text
-* markdown
-* HTML
-* DOCX
-* PDF
-* template-based
-* LLM-generated
-* minimally formatted
-
-Do not replace the entire document system blindly.
-
-The objective is to produce documents that are genuinely portfolio/demo quality.
-
----
-
-# PART 8 — CV QUALITY
-
-The generated CV must not look like raw generated text.
-
-Inspect the existing master CV/profile structure.
-
-Preserve factual information from the candidate profile.
-
-The generated CV should have a professional hierarchy such as:
-
-Header
-Name
-Role / professional title
-Contact information
-
-Professional Summary
-
-Core Skills
-
-Professional Experience
-
-Education
-
-Certifications
-
-Languages
-
-Projects / Additional Information where appropriate
-
-The exact sections must follow the actual profile data.
-
-Do NOT invent:
-
-* employers
-* dates
-* technologies
-* qualifications
-* metrics
-* achievements
-
-The LLM may tailor wording to the job but must remain grounded in verified profile data.
-
----
-
-# PART 9 — COVER LETTER QUALITY
-
-Cover letters should be actual professional documents, not a few generic sentences.
-
-Use:
-
-* candidate profile
-* target job
-* company name
-* job title
-* relevant experience
-* relevant skills
-
-Structure approximately:
-
-Greeting
-
-Opening:
-specific interest in role/company
-
-Relevant experience:
-2–3 concrete connections between candidate and job
-
-Value:
-why the candidate's experience is relevant
-
-Closing:
-professional call to action
-
-Signature
-
-Avoid:
-
-* generic AI filler
-* exaggerated claims
-* fabricated achievements
-* repetitive wording
-* "I am excited to apply..." repeated in every document
-
-The LLM should tailor the document to the job while remaining factual.
-
----
-
-# PART 10 — DOCUMENT RENDERING
-
-Inspect the existing renderer.
-
-If the project already generates PDF/DOCX:
-
-IMPROVE the existing renderer.
-
-Do NOT introduce a second document-generation framework unless the existing implementation cannot produce usable documents.
-
-The rendered result should have:
-
-* consistent typography
-* headings
-* spacing
-* readable margins
-* page breaks
-* bullet lists
-* proper date formatting
-* consistent alignment
-* professional hierarchy
-
-Avoid:
-
-* giant empty spaces
-* text touching page edges
-* orphan headings
-* broken bullets
-* raw Markdown syntax
-* raw JSON
-* raw prompt output
-* excessive decorative elements
-
-If HTML → PDF is already used, improve the HTML/CSS template.
-
-If DOCX is used, improve its existing styles.
-
-If Markdown is used only as an intermediate representation, ensure the final artifact is properly rendered.
-
----
-
-# PART 11 — DOCUMENT PREVIEW
-
-Inspect how documents are displayed in the UI.
-
-If the current UI only shows:
-
-filename
-artifact path
-timestamp
-
-then improve it.
-
-The user should be able to understand:
-
-Document type
-Target job
-Created date
-Status
-File type
-
-and access it directly.
-
-Prefer:
-
-[View] [Download]
-
-If a preview is technically easy using the existing infrastructure, provide it.
-
-Do NOT build a complex document editor.
-
----
-
-# PART 12 — API / SERVICE CONTRACT REVIEW
-
-Trace the frontend requests for:
-
-Applications
-Documents
-Jobs
-Matching
-Events
-
-against the actual backend routes.
-
-Find mismatches such as:
-
-frontend:
-GET /api/...
-
-backend:
-GET /api/v1/...
-
-or:
-
-frontend expects:
-artifact_url
-
-backend returns:
-artifact_path
-
-Fix the actual contract.
-
-Do not add duplicate endpoints if an existing endpoint can be corrected.
-
-Check:
-
-* HTTP methods
-* route prefixes
-* request bodies
-* response schemas
-* field names
-* error handling
-* status codes
-
----
-
-# PART 13 — SERVICE HEALTH
-
-Review Docker Compose and service dependencies.
-
-For every service verify:
-
-* container name
-* port
-* environment variables
-* dependency
-* health check
-* internal hostname
-* API endpoint
-
-Remember:
-
-inside Docker:
-
-localhost != another container
-
-Services should communicate using Docker service names.
-
-Do not introduce a service-discovery system.
-
----
-
-# PART 14 — FRONTEND STATE / LOADING / ERRORS
-
-Inspect every major API-backed page.
-
-Avoid:
-
-* blank screens
-* buttons doing nothing
-* permanent spinners
-* stale data after mutation
-* duplicate requests
-* silent errors
-
-For important operations:
-
-loading
-→ request
-→ success state
-
-or:
-
-loading
-→ request
-→ visible error + retry
-
-Use the existing frontend state management.
-
-Do not introduce Redux/Zustand/etc. unless the project already uses it and actually requires a correction.
-
----
-
-# PART 15 — RESPONSIVE DESIGN
-
-Fix the actual layout problems.
-
-Use the project's existing CSS/Tailwind/component system.
-
-Prefer:
-
-flex-wrap
-grid
-minmax()
-min-width: 0
-responsive breakpoints
-overflow-x:auto for tables
-responsive padding
-
-Avoid:
-
-* giant fixed widths
-* negative margins
-* arbitrary transforms
-* absolute positioning used to patch layout
-* hiding important buttons on smaller screens
-
-The application must remain usable at:
-
-1440x900
-1280x800
-1024x768
-
----
-
-# PART 16 — DESIGN CONSISTENCY
-
-Perform a visual consistency review.
-
-Check:
-
-* typography
-* button sizes
-* border radius
-* spacing
-* cards
-* tables
-* badges
-* status colors
-* icons
-* empty states
-* loading states
-* error states
-
-Do NOT perform a full visual redesign.
-
-Keep the existing design language.
+Find the actual layout constraint causing the Applications section/table to be narrower than the available dashboard content area.
 
 The goal is:
 
-clean
-consistent
-professional
-functional
+1. Applications content uses the full available dashboard width.
+2. The table is readable at 1440×900 and 1280×800.
+3. All important columns and actions remain accessible.
+4. The table may scroll horizontally when genuinely necessary.
+5. The parent dashboard layout must NOT shrink the Applications tab unnecessarily.
+6. Other dashboard tabs must not regress.
+7. No horizontal page-level overflow should be introduced.
 
 ---
 
-# PART 17 — TESTS FOR THE ACTUAL BUGS
+# STEP 1 — INSPECT THE CURRENT IMPLEMENTATION
 
-Add regression coverage for the bugs discovered.
+Before editing anything, inspect the actual repository.
 
-At minimum cover:
+Find the exact files/components responsible for:
 
-## Applications
+* dashboard shell/layout
+* tab navigation
+* Applications tab/page/component
+* application table
+* application row/card
+* action buttons
+* shared dashboard container
+* global CSS/Tailwind configuration
 
-* page renders
-* applications use available content width
-* primary actions are visible
-* action buttons do not overflow
+Do NOT assume filenames from this prompt.
 
-## Documents
+Search for existing strings/components related to:
 
-* artifact metadata renders
-* raw internal path is not the primary UI
-* Open/Download action exists
-* artifact access uses the safe API mechanism
+```text
+Applications
+application
+Playwright ile Doldur
+Playwright ile Gönder
+Tarayıcıda Aç
+Artifact Path
+```
 
-## Services
+Then trace:
 
-* applications endpoint works
-* documents/artifacts endpoint works
-* health endpoint works
+```text
+Dashboard shell
+    ↓
+Applications tab
+    ↓
+Applications data
+    ↓
+Application table/list
+    ↓
+Application row
+    ↓
+Action buttons
+```
 
-## Document generation
-
-* CV generation produces non-empty meaningful content
-* cover letter generation produces non-empty meaningful content
-* generated artifact is stored successfully
-
-Use existing test infrastructure.
-
-Do not create a giant new testing framework.
-
----
-
-# PART 18 — MANUAL BROWSER ACCEPTANCE TEST
-
-After coding, actually open the application.
-
-Test this sequence:
-
-1. Open dashboard.
-2. Open Jobs.
-3. Open an existing job.
-4. Trigger matching if available.
-5. Generate a CV.
-6. Generate a cover letter.
-7. Open Applications.
-8. Inspect application card/table width.
-9. Click relevant application action.
-10. Open Documents.
-11. Confirm generated document is visible.
-12. Confirm Artifact Path is no longer just raw text.
-13. Click Open/View.
-14. Click Download if available.
-15. Verify the document is actually accessible.
-16. Inspect the generated document visually.
-
-If document generation is slow, wait for completion instead of declaring failure prematurely.
+Identify where width is actually being constrained.
 
 ---
 
-# PART 19 — DOCUMENT QUALITY ACCEPTANCE
+# STEP 2 — FIND THE REAL WIDTH BOTTLENECK
 
-Inspect an actual generated CV and cover letter.
+Inspect every relevant parent element.
 
-Do not merely check HTTP 200.
+Look specifically for combinations such as:
 
-The document must be:
+```css
+width
+max-width
+min-width
+min-w-0
+w-full
+max-w-*
+grid
+grid-cols-*
+flex
+flex-*
+overflow-hidden
+overflow-x-hidden
+overflow-x-auto
+```
 
-* readable
-* structured
-* professional
-* factually grounded
-* properly formatted
-* usable as an application document
+Also check whether the Applications tab is inside a grid/flex child that is missing:
 
-If the generated document is still obviously poor, continue fixing the actual generation/template pipeline.
+```css
+min-width: 0;
+```
 
----
+or alternatively has an incorrect:
 
-# PART 20 — DO NOT OVERENGINEER
+```css
+max-width
+width
+grid-template-columns
+```
 
-Absolutely do NOT:
+A common failure pattern is:
 
-* rewrite the architecture
-* merge services
-* split services
-* introduce Kubernetes
-* introduce Kafka
-* introduce another database
-* introduce another LLM
-* introduce RAG
-* introduce another frontend framework
-* build a new design system
-* build a full document editor
-* implement enterprise authentication
-* implement production observability
+```tsx
+<div className="grid ...">
+    <main>
+        <Applications />
+    </main>
+</div>
+```
 
-This is a stabilization/product-quality patch.
+where the child cannot correctly shrink/grow because the grid/flex sizing rules are wrong.
 
----
+Another common failure is:
 
-# PART 21 — IMPLEMENTATION STYLE
+```tsx
+<div className="overflow-hidden">
+    <table>...</table>
+</div>
+```
 
-IMPORTANT:
+which clips the table instead of allowing the table container to scroll.
 
-Do not make broad speculative changes.
-
-For every bug:
-
-1. Identify root cause.
-2. Identify exact file.
-3. Identify exact function/component.
-4. Make the smallest correct change.
-5. Test it.
-6. Check for regressions.
-
-If a component is genuinely badly structured, refactor only that component.
-
-Do not perform unrelated cleanup.
-
----
-
-# PART 22 — FINAL CODE REVIEW
-
-Run:
-
-git status
-git diff --stat
-git diff
-
-Inspect all modifications.
-
-Remove:
-
-* debug logging
-* temporary files
-* screenshots
-* generated artifacts
-* secrets
-* .env files
-* node_modules
-* build artifacts
-
-Do not commit.
+Do not assume either pattern exists. Confirm the actual implementation first.
 
 ---
 
-# FINAL REPORT
+# STEP 3 — FIX THE CONTAINER HIERARCHY
 
-Return:
+The desired structure should conceptually be:
 
-## Repository map
+```tsx
+<div className="w-full min-w-0">
+    <div className="w-full min-w-0">
+        <div className="w-full overflow-x-auto">
+            <table className="w-full min-w-[...appropriate width...]">
+                ...
+            </table>
+        </div>
+    </div>
+</div>
+```
 
-Actual files discovered for:
+Adapt this to the project's existing styling system.
 
-* frontend
-* Applications
-* Documents
-* artifact storage
-* document generation
-* API
-* browser automation
+The important rules are:
 
-## Problems found
+### Dashboard/content parent
 
-Group:
+The Applications content root should be equivalent to:
 
-* UI
-* Applications
-* Documents
-* document generation
-* API
-* services
-* tests
+```tsx
+className="w-full min-w-0"
+```
 
-## Root causes
+or the project's equivalent CSS.
 
-For every important problem, state:
+### Table wrapper
 
-file
-component/function
-root cause
+The horizontal scrolling responsibility should belong to the immediate table wrapper:
 
-## Changes made
+```tsx
+className="w-full min-w-0 overflow-x-auto"
+```
 
-State:
+NOT the whole page.
 
-file
-change
-reason
+### Table
 
-## Tests executed
+Do not force the table to compress every column into unreadable widths.
 
-Exact commands and results.
+If the actual number of columns requires more width, use an appropriate minimum width:
 
-## Manual browser verification
+```tsx
+className="w-full min-w-[1100px]"
+```
 
-State which viewport sizes were checked.
+BUT:
 
-## Document verification
+* determine the correct value from the actual columns;
+* do not blindly use `1100px`;
+* do not use an unnecessarily huge value such as `1600px` just to hide the problem.
 
-State which generated artifacts were inspected and whether they were actually accessible/rendered.
+If the project uses CSS instead of Tailwind, implement the equivalent:
 
-## Remaining problems
+```css
+.applications-table-container {
+    width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+}
 
-Only genuine unresolved issues.
+.applications-table {
+    width: 100%;
+    min-width: 1100px;
+}
+```
 
-## Git
+Again, adapt the exact value to the real table.
 
-Confirm:
+---
 
-No commit.
-No push.
-Changes remain local and uncommitted.
+# STEP 4 — CHECK THE TABLE COLUMNS
 
-IMPORTANT:
+Inspect the actual Application table.
 
-Do not stop after static inspection.
+Determine all columns currently rendered.
 
-Run the application.
+For example, if the current implementation contains things similar to:
 
-Inspect the actual UI.
+```text
+Company
+Role
+Status
+Match
+Created
+Documents
+Actions
+```
 
-Trace the actual API calls.
+calculate whether their combined minimum widths exceed the available viewport.
 
-Inspect actual generated documents.
+Do NOT solve this by making text microscopic.
 
-Fix root causes rather than applying superficial CSS patches.
+For long values such as:
+
+* company names
+* job titles
+* URLs
+* artifact paths
+* error messages
+
+use controlled wrapping/truncation.
+
+For example:
+
+```tsx
+<div className="min-w-0">
+    <span className="block truncate">
+        {value}
+    </span>
+</div>
+```
+
+For URLs/paths that must remain readable:
+
+```tsx
+className="break-all"
+```
+
+or a controlled truncation pattern can be used where appropriate.
+
+Do NOT allow one long string to force the entire dashboard layout wider.
+
+---
+
+# STEP 5 — CHECK THE ACTION COLUMN
+
+The action buttons must not cause the whole table to collapse.
+
+The action container should conceptually behave like:
+
+```tsx
+<div className="flex flex-wrap items-center gap-2 shrink-0">
+    ...
+</div>
+```
+
+Individual buttons should use:
+
+```tsx
+className="shrink-0 whitespace-nowrap"
+```
+
+where appropriate.
+
+Do NOT give every button arbitrary fixed widths.
+
+Do NOT hide buttons simply to make the table fit.
+
+All existing actions must remain available.
+
+Specifically verify these if present:
+
+```text
+Playwright ile Doldur
+Playwright ile Gönder
+Tarayıcıda Aç
+View / Download
+Retry
+Details
+```
+
+If the current UI uses icon buttons or dropdown actions, preserve the existing interaction model.
+
+---
+
+# STEP 6 — IMPORTANT: CHECK WHETHER THE TAB ITSELF IS BEING SHRUNK
+
+This is the most important part.
+
+Compare the computed/rendered width of:
+
+```text
+Dashboard content
+Jobs tab
+Applications tab
+Events tab
+Settings tab
+```
+
+If possible, run the application and inspect the DOM/browser.
+
+The Applications root should not have a smaller explicit width than the other main tabs.
+
+Look for accidental rules like:
+
+```css
+width: fit-content;
+display: inline-block;
+max-width: ...
+```
+
+or Tailwind equivalents:
+
+```text
+w-fit
+max-w-*
+inline-flex
+inline-block
+```
+
+on a parent that should span the dashboard.
+
+If you find something equivalent to:
+
+```tsx
+<div className="w-fit">
+```
+
+on the Applications content root, replace it with:
+
+```tsx
+<div className="w-full min-w-0">
+```
+
+ONLY if that is actually the cause.
+
+Do not make speculative changes.
+
+---
+
+# STEP 7 — DO NOT BREAK THE OTHER TABS
+
+After the fix, verify:
+
+```text
+Overview
+Jobs
+Applications
+Events
+Settings
+```
+
+Applications should use the same main content width model as the other tabs.
+
+Do not create an Applications-only special layout unless the table genuinely requires horizontal scrolling.
+
+The correct architecture is:
+
+```text
+Dashboard shell
+    └── shared content width
+          ├── Overview
+          ├── Jobs
+          ├── Applications
+          │      └── table-specific horizontal scrolling
+          ├── Events
+          └── Settings
+```
+
+NOT:
+
+```text
+Dashboard shell
+    ├── Overview
+    ├── Jobs
+    ├── Applications ← artificially narrow
+    ├── Events
+    └── Settings
+```
+
+---
+
+# STEP 8 — DOCUMENT/ARTIFACT LINKS REGRESSION CHECK
+
+Because the Applications/Documents UI was modified previously, also verify that application-related artifact links still work.
+
+If an artifact is currently rendered as an internal path such as:
+
+```text
+/artifacts/...
+```
+
+or:
+
+```text
+some/internal/minio/path
+```
+
+do not expose internal storage paths directly.
+
+The UI should use the existing backend artifact endpoint/presigned URL mechanism.
+
+Do NOT redesign the storage layer in this task.
+
+Only fix this if the current Applications/Documents rendering is broken.
+
+---
+
+# STEP 9 — RUN THE APPLICATION
+
+Use the existing project commands from the repository.
+
+Do not invent a new development environment.
+
+Run the frontend and required backend services using the project's existing setup.
+
+Then inspect Applications at:
+
+```text
+1440 × 900
+1280 × 800
+1024 × 768
+```
+
+If browser tooling is available, inspect the actual rendered DOM/computed dimensions.
+
+Check:
+
+### 1440×900
+
+* Applications uses the full dashboard content width.
+* Table is not artificially narrow.
+* Buttons are visible.
+* No important content is clipped.
+
+### 1280×800
+
+* Table remains usable.
+* Horizontal scrolling happens INSIDE the table container if required.
+* Page itself does not gain unwanted horizontal scrolling.
+
+### 1024×768
+
+* Responsive behavior remains usable.
+* Actions remain accessible.
+* Nothing is silently clipped.
+
+---
+
+# STEP 10 — ADD A REGRESSION TEST IF THE PROJECT ALREADY HAS FRONTEND TEST INFRASTRUCTURE
+
+If frontend tests already exist, add a focused regression test for the actual bug.
+
+Test the important structural properties rather than pixel-perfect screenshots.
+
+For example, verify that the Applications root/table container has the expected full-width/min-width behavior.
+
+If Playwright/browser regression infrastructure already exists, add a small regression check such as:
+
+```ts
+await expect(applicationsRoot).toBeVisible();
+await expect(applicationsTable).toBeVisible();
+
+const rootWidth = await applicationsRoot.evaluate(
+  (el) => el.getBoundingClientRect().width
+);
+
+const viewportWidth = await page.evaluate(() => window.innerWidth);
+
+expect(rootWidth).toBeGreaterThan(viewportWidth * 0.7);
+```
+
+Adapt this to the actual dashboard layout.
+
+Do NOT add a large new testing framework solely for this task.
+
+---
+
+# STEP 11 — BUILD/LINT/TEST
+
+After implementation run the existing relevant commands.
+
+At minimum:
+
+```bash
+npm run lint
+npm run build
+```
+
+if those scripts exist.
+
+Also run the project's relevant tests.
+
+If the repository uses another package manager or command, inspect `package.json` and use the existing project convention.
+
+Fix errors introduced by your changes.
+
+Do not leave the project in a broken state.
+
+---
+
+# ACCEPTANCE CRITERIA
+
+The task is complete only when all of these are true:
+
+* [ ] Applications tab uses the same main content width as the other dashboard tabs.
+* [ ] Root cause of the narrow layout has been identified and fixed.
+* [ ] No arbitrary giant fixed width was added.
+* [ ] Table has controlled horizontal overflow when necessary.
+* [ ] Page-level horizontal overflow is not introduced.
+* [ ] Application action buttons remain accessible.
+* [ ] Long company/job/path values cannot break the layout.
+* [ ] Existing functionality still works.
+* [ ] Other dashboard tabs are not visually regressed.
+* [ ] Frontend lint/build passes.
+* [ ] Relevant tests pass.
+* [ ] Manual check completed at 1440×900, 1280×800 and 1024×768.
+* [ ] No git commit was created.
+* [ ] No git push was performed.
+
+## FINAL RESPONSE
+
+When finished, report:
+
+1. The exact root cause of the Applications width problem.
+2. Exact files changed.
+3. For each file, explain the specific code/layout change.
+4. Tests/build commands executed and their results.
+5. Whether any unrelated issues were found.
+6. Confirm that no commit/push was performed.
+
+Do NOT claim success without actually running the relevant checks.
