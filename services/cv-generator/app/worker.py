@@ -45,8 +45,9 @@ class CVGeneratorWorker:
             match_rec = res_m.scalars().first()
             matching_skills = match_rec.matching_skills if match_rec else []
 
-            # Generate documents
-            generated_docs = self.generator.generate_tailored_documents(
+            # Generate documents (grounding gate inside: ungrounded artifacts
+            # are never persisted and come back as violations instead).
+            generated_docs, violations = self.generator.generate_tailored_documents(
                 job_id=job.id,
                 company=job.company,
                 title=job.title,
@@ -54,6 +55,14 @@ class CVGeneratorWorker:
                 matching_skills=matching_skills,
                 profile=self.profile,
             )
+
+            if violations:
+                logger.warning(
+                    f"Grounding violations for job {job_id}: "
+                    f"{[(v.kind, v.claim) for v in violations]}"
+                )
+                job.status = PipelineStatus.DOC_REVIEW_REQUIRED.value
+                return False
 
             # Persist to database
             for doc_model in generated_docs:
@@ -116,6 +125,8 @@ class CVGeneratorWorker:
                         PipelineStatus.QUALIFIED.value,
                         PipelineStatus.DOCUMENTS_READY.value,
                         PipelineStatus.READY_TO_APPLY.value,
+                        # Re-validate review jobs: fixed templates heal them.
+                        PipelineStatus.DOC_REVIEW_REQUIRED.value,
                     ]
                 )
             )
@@ -146,7 +157,13 @@ class CVGeneratorWorker:
 
         while self.running:
             try:
-                events = await self.bus.read_events(
+                # T5: reprocess idle pending messages left by crashed workers.
+                reclaimed = await self.bus.reclaim_events(
+                    stream=settings.STREAM_EVENTS,
+                    group=CONSUMER_GROUP,
+                    consumer=CONSUMER_NAME,
+                )
+                events = reclaimed + await self.bus.read_events(
                     stream=settings.STREAM_EVENTS,
                     group=CONSUMER_GROUP,
                     consumer=CONSUMER_NAME,

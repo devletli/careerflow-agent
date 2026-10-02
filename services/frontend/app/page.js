@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { fetchJson, formatDate, StatusPill } from "./lib";
+import { fetchJson, formatDate, StatusPill, STRINGS } from "./lib";
 
-const TABS = ["Overview", "Jobs", "Documents", "Applications", "Events", "Settings"];
+const TABS = STRINGS.tabs;
 const REFRESH_MS = 10000;
 const THEME_KEY = "ai-job-agent-theme";
 
@@ -138,13 +138,7 @@ function Toolbar({ label, onRefresh, count }) {
   );
 }
 
-const ACTIONS = [
-  { id: "discover", label: "Search Jobs", description: "Search all sources for new listings." },
-  { id: "match", label: "Run Matching", description: "Match new listings against your profile." },
-  { id: "generate_documents", label: "Generate CV & Cover Letter", description: "Generate documents for qualifying listings." },
-  { id: "analyze_applications", label: "Analyze Forms", description: "Inspect application forms for listings with ready documents." },
-  { id: "fill_applications", label: "Fill Forms", description: "Fill ready applications; never submits." },
-];
+const ACTIONS = STRINGS.actions;
 
 function ActionPanel({ onRun, runningAction, actionMessage }) {
   return (
@@ -318,20 +312,20 @@ function ApplicationsTab({ applications, error, loading, refresh, onSubmit, subm
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Open in Browser
+                  {STRINGS.openInBrowser}
                 </a>
                 <a
                   className="link"
                   href={`ai-job-agent://prepare?application_id=${a.id}`}
                 >
-                  Fill with Playwright
+                  {STRINGS.fillWithPlaywright}
                 </a>
                 <button
                   className="refresh-btn primary-btn"
                   disabled={Boolean(submittingApplicationId)}
                   onClick={() => onSubmit(a)}
                 >
-                  {submittingApplicationId === a.id ? "Submitting…" : "Submit with Playwright"}
+                  {submittingApplicationId === a.id ? "Submitting…" : STRINGS.submitWithPlaywright}
                 </button>
               </td>
             </tr>
@@ -489,8 +483,8 @@ export default function Home() {
   const runAction = useCallback(async (action) => {
     const requiresExtraWarning = action.id === "fill_applications";
     const prompt = requiresExtraWarning
-      ? "Application forms will be filled. The process stops on CAPTCHA, MFA, ambiguous questions, or submission; nothing is submitted while AUTO_SUBMIT is off. Continue?"
-      : `Start "${action.label}"?`;
+      ? STRINGS.confirmFill
+      : STRINGS.confirmStart.replace("{label}", action.label);
     if (!window.confirm(prompt)) return;
 
     setRunningAction(action.id);
@@ -517,10 +511,7 @@ export default function Home() {
 
   const submitApplication = useCallback(async (application) => {
     const name = `${application.company} — ${application.title}`;
-    if (!window.confirm(
-      `Playwright will fill the form for ${name} and press submit. `
-      + "The process stops on CAPTCHA, MFA, sign-in requirements, or unverified legal questions. Continue?"
-    )) return;
+    if (!window.confirm(STRINGS.confirmSubmit.replace("{name}", name))) return;
 
     setRunningAction(application.id);
     setActionMessage("");

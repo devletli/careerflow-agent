@@ -33,6 +33,19 @@ def test_failure_and_blocked_transitions():
     assert is_valid_transition(PipelineStatus.BLOCKED, PipelineStatus.READY_TO_APPLY)
 
 
+def test_doc_review_required_transitions():
+    # Grounding failure: QUALIFIED -> DOC_REVIEW_REQUIRED
+    assert is_valid_transition(PipelineStatus.QUALIFIED, PipelineStatus.DOC_REVIEW_REQUIRED)
+    # Healed template / manual fix: review -> DOCUMENTS_READY (or back to QUALIFIED)
+    assert is_valid_transition(PipelineStatus.DOC_REVIEW_REQUIRED, PipelineStatus.DOCUMENTS_READY)
+    assert is_valid_transition(PipelineStatus.DOC_REVIEW_REQUIRED, PipelineStatus.QUALIFIED)
+    # Review can also fail/block like other active states
+    assert is_valid_transition(PipelineStatus.DOC_REVIEW_REQUIRED, PipelineStatus.FAILED)
+    assert is_valid_transition(PipelineStatus.DOC_REVIEW_REQUIRED, PipelineStatus.BLOCKED)
+    # No silent skip of document review straight to form analysis
+    assert not is_valid_transition(PipelineStatus.DOC_REVIEW_REQUIRED, PipelineStatus.FORM_ANALYZED)
+
+
 def test_discovery_only_mode():
     mode = AutomationMode.DISCOVERY_ONLY
     allowed, _ = can_advance_mode(PipelineStatus.NORMALIZED, mode)

@@ -92,6 +92,6 @@ def parse_event(data: Any) -> BaseEvent:
     if not isinstance(data, dict):
         raise ValueError(f"Expected dict or JSON string for event parsing, got {type(data)}")
 
-    event_type = data.get("event_type")
-    event_cls = EVENT_TYPE_MAP.get(event_type, BaseEvent)
+    event_type = data.get("event_type") if isinstance(data, dict) else None
+    event_cls = EVENT_TYPE_MAP.get(event_type, BaseEvent) if isinstance(event_type, str) else BaseEvent
     return event_cls(**data)

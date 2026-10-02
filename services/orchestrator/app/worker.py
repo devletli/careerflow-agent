@@ -23,6 +23,7 @@ from shared.db.models import (
     DeadLetterEvent,
 )
 from shared.db.session import get_session, check_db_health
+from shared.infra.jsonlog import correlation, install_json_logging
 from shared.infra.redis_bus import RedisEventBus, calculate_backoff
 from .state_machine import can_advance_mode
 from .duplicate_detector import (
@@ -48,6 +49,8 @@ class OrchestratorWorker:
 
     async def start(self):
         self.running = True
+        if settings.LOG_FORMAT == "json":
+            install_json_logging()
         logger.info(f"Orchestrator worker starting with mode={settings.AUTOMATION_MODE}")
 
         # Check DB and Redis connectivity
@@ -62,7 +65,13 @@ class OrchestratorWorker:
 
         while self.running:
             try:
-                events = await self.bus.read_events(
+                # T5: reprocess idle pending messages left by crashed workers.
+                reclaimed = await self.bus.reclaim_events(
+                    stream=settings.STREAM_EVENTS,
+                    group=CONSUMER_GROUP,
+                    consumer=CONSUMER_NAME,
+                )
+                events = reclaimed + await self.bus.read_events(
                     stream=settings.STREAM_EVENTS,
                     group=CONSUMER_GROUP,
                     consumer=CONSUMER_NAME,
@@ -87,6 +96,10 @@ class OrchestratorWorker:
 
     async def _process_with_retry(self, msg_id: str, event: BaseEvent):
         """Processes event with bounded retry backoff and dead-letter routing."""
+        with correlation(event.correlation_id, event.entity_id):
+            await self._process_with_retry_inner(msg_id, event)
+
+    async def _process_with_retry_inner(self, msg_id: str, event: BaseEvent):
         retry_count = int(event.payload.get("_retry_count", 0))
 
         try:

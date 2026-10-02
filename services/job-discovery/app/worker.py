@@ -171,7 +171,13 @@ class JobDiscoveryWorker:
                 1,
                 min(int((next_scheduled_run - time.monotonic()) * 1000), 10_000),
             )
-            events = await self.bus.read_events(
+            # T5: reprocess idle pending messages left by crashed workers.
+            reclaimed = await self.bus.reclaim_events(
+                stream=settings.STREAM_EVENTS,
+                group=CONTROL_GROUP,
+                consumer=CONTROL_CONSUMER,
+            )
+            events = reclaimed + await self.bus.read_events(
                 stream=settings.STREAM_EVENTS,
                 group=CONTROL_GROUP,
                 consumer=CONTROL_CONSUMER,

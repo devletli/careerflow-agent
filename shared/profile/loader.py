@@ -6,7 +6,7 @@ import logging
 try:
     import PyPDF2
 except ImportError:
-    PyPDF2 = None
+    PyPDF2 = None  # type: ignore[assignment]
 
 from shared.config import settings
 

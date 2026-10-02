@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 from bs4 import BeautifulSoup
 
@@ -150,8 +151,11 @@ class FormAnalyzer:
         if any(w in q_low for w in ["salary expectation", "gehalt", "compensation", "notice period", "kündigungsfrist", "start date", "relocat", "willing to travel"]):
             return QuestionClassification.USER_PREFERENCE, 0.95
 
-        # Safe Transformations
-        if any(w in q_low for w in ["years of experience", "jahre erfahrung", "highest degree", "highest education", "level of english", "deutschkenntnisse"]):
+        # Safe Transformations (years-of-<field>-experience covers
+        # Greenhouse/Lever variants like "years of DevOps experience").
+        if any(w in q_low for w in ["jahre erfahrung", "highest degree", "highest education", "level of english", "deutschkenntnisse"]):
+            return QuestionClassification.SAFE_TRANSFORMATION, 0.95
+        if "years of experience" in q_low or re.search(r"years?\s+of\s+[\w\s]*experience", q_low):
             return QuestionClassification.SAFE_TRANSFORMATION, 0.95
 
         # Safe Facts

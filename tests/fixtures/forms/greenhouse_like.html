@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture: Greenhouse-like application form</title></head>
+<body>
+  <main id="application-form">
+    <h1>DevOps Engineer — FixtureCorp (Berlin)</h1>
+    <form action="/submit" method="post" enctype="multipart/form-data"
+          onsubmit="window.__submitted = true; return false;">
+      <div class="field">
+        <label for="first_name">First Name *</label>
+        <input type="text" id="first_name" name="first_name" required>
+      </div>
+      <div class="field">
+        <label for="last_name">Last Name *</label>
+        <input type="text" id="last_name" name="last_name" required>
+      </div>
+      <div class="field">
+        <label for="email">Email *</label>
+        <input type="email" id="email" name="email" required>
+      </div>
+      <div class="field">
+        <label for="phone">Phone</label>
+        <input type="tel" id="phone" name="phone">
+      </div>
+      <div class="field">
+        <label for="resume">Resume / CV *</label>
+        <input type="file" id="resume" name="resume" accept=".pdf,.doc,.docx" required>
+      </div>
+      <div class="field">
+        <label for="cover_letter">Cover Letter</label>
+        <input type="file" id="cover_letter" name="cover_letter" accept=".pdf,.doc,.docx">
+      </div>
+      <div class="field">
+        <label for="linkedin">LinkedIn Profile</label>
+        <input type="text" id="linkedin" name="linkedin" placeholder="https://linkedin.com/in/...">
+      </div>
+      <div class="field">
+        <label for="question_years">How many years of DevOps experience do you have? *</label>
+        <input type="text" id="question_years" name="question_years" required>
+      </div>
+      <div class="field">
+        <label for="question_authorized">Are you authorized to work in Germany? *</label>
+        <select id="question_authorized" name="question_authorized" required>
+          <option value="">Select...</option>
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select>
+      </div>
+      <button type="submit" id="submit-btn">Submit Application</button>
+    </form>
+  </main>
+  <script>window.__submitted = false;</script>
+</body>
+</html>

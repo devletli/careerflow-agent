@@ -18,6 +18,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from shared.config import settings
 from shared.contracts.models import GeneratedDocument
 from shared.infra.storage import MinIOClient
+from shared.profile.grounding import Violation, validate_grounding
 from shared.profile.loader import CanonicalProfile
 
 logger = logging.getLogger(__name__)
@@ -51,8 +52,13 @@ class DocumentGenerator:
         description: str,
         matching_skills: List[str],
         profile: CanonicalProfile,
-    ) -> List[GeneratedDocument]:
-        """Generate factual, job-specific CVs and a cover letter in MinIO and locally."""
+    ) -> tuple[List[GeneratedDocument], List[Violation]]:
+        """Generate factual, job-specific CVs and a cover letter in MinIO and locally.
+
+        Every artifact is grounding-validated BEFORE persistence: violating
+        artifacts are neither written locally nor uploaded to MinIO. Returns
+        (persisted documents, violations).
+        """
         language = detect_job_language(f"{title} {description}")
         tailoring = self._build_tailoring(title, description, matching_skills, profile)
         candidate_slug = filename_slug(profile.name)
@@ -86,7 +92,23 @@ class DocumentGenerator:
         ]
 
         documents = []
+        violations: List[Violation] = []
+        allow = [company, title, date.today().strftime("%B %d, %Y"), date.today().strftime("%d.%m.%Y")]
         for document_type, version, filename, mime_type, content in artifacts:
+            text = self._extract_text(filename, content)
+            found = (
+                validate_grounding(text, profile.facts, allow=allow)
+                if text is not None
+                else [Violation("unreadable", filename)]
+            )
+            if found:
+                logger.warning(
+                    "Grounding violations in %s: %s",
+                    filename,
+                    [(v.kind, v.claim) for v in found],
+                )
+                violations.extend(found)
+                continue  # never persist ungrounded artifacts
             local_path = artifact_dir / filename
             local_path.parent.mkdir(parents=True, exist_ok=True)
             local_path.write_bytes(content)
@@ -114,7 +136,24 @@ class DocumentGenerator:
                     },
                 )
             )
-        return documents
+        return documents, violations
+
+    @staticmethod
+    def _extract_text(filename: str, content: bytes) -> str | None:
+        """Extracts rendered text for grounding validation (None if unreadable)."""
+        try:
+            if filename.endswith(".pdf"):
+                import PyPDF2
+
+                reader = PyPDF2.PdfReader(io.BytesIO(content))
+                return "\n".join(page.extract_text() or "" for page in reader.pages)
+            if filename.endswith(".docx"):
+                return "\n".join(
+                    paragraph.text for paragraph in docx.Document(io.BytesIO(content)).paragraphs
+                )
+        except Exception as e:
+            logger.warning(f"Could not extract text from {filename}: {e}")
+        return None
 
     def _build_tailoring(
         self,

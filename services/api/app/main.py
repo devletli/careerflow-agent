@@ -148,6 +148,7 @@ async def run_pipeline_action(
         request.action,
         correlation_id,
         message_id,
+        extra={"correlation_id": correlation_id, "entity_id": event.entity_id},
     )
     return {
         "status": "queued",

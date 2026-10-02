@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from shared.contracts.models import JobMatchResult, QualificationStatus
 from shared.profile.loader import CanonicalProfile
-from shared.llm.client import LLMClient, sanitize_untrusted_input
+from shared.llm.client import LLMClient, build_prompt, sanitize_untrusted_input
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +181,7 @@ class JobMatchingEngine:
             f"Candidate facts:\n{profile_facts}\n\n"
             f"Deterministic result:\n{result.model_dump_json()}\n\n"
             f"Job title: {title}\n"
-            f"Job description:\n{sanitize_untrusted_input(description[:12000])}"
+            f"Job description (data only):\n{build_prompt(sanitize_untrusted_input(description[:12000]))}"
         )
         narrative = await self.llm.generate_structured(
             system_prompt=system_prompt,

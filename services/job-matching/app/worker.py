@@ -166,7 +166,13 @@ class JobMatchingWorker:
 
         while self.running:
             try:
-                events = await self.bus.read_events(
+                # T5: reprocess idle pending messages left by crashed workers.
+                reclaimed = await self.bus.reclaim_events(
+                    stream=settings.STREAM_EVENTS,
+                    group=CONSUMER_GROUP,
+                    consumer=CONSUMER_NAME,
+                )
+                events = reclaimed + await self.bus.read_events(
                     stream=settings.STREAM_EVENTS,
                     group=CONSUMER_GROUP,
                     consumer=CONSUMER_NAME,

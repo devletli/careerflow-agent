@@ -19,6 +19,7 @@ class PipelineStatus(str, Enum):
     FAILED = "FAILED"
     BLOCKED = "BLOCKED"
     DUPLICATE = "DUPLICATE"
+    DOC_REVIEW_REQUIRED = "DOC_REVIEW_REQUIRED"
 
 
 class AutomationMode(str, Enum):

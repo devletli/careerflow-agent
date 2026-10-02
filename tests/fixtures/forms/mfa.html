@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture: form with MFA step-up</title></head>
+<body>
+  <h1>Additional verification required</h1>
+  <p>For your security, complete multi-factor authentication to continue
+     your application. Open your authenticator app and enter the
+     verification code below.</p>
+  <form action="/verify" method="post" onsubmit="window.__submitted = true; return false;">
+    <label for="mfa_code">Authentication code</label>
+    <input type="text" id="mfa_code" name="mfa_code" autocomplete="one-time-code" required>
+    <button type="submit" id="submit-btn">Verify identity</button>
+  </form>
+  <script>window.__submitted = false;</script>
+</body>
+</html>

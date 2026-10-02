@@ -33,7 +33,7 @@ explorer:
 	explorer artifacts
 
 backup:
-	docker compose exec -T postgres pg_dump -U $$POSTGRES_USER $$POSTGRES_DB | gzip > backups/db-$$(date +%F).sql.gz
+	bash scripts/backup.sh
 
 restore:
-	gunzip -c $(FILE) | docker compose exec -T postgres psql -U $$POSTGRES_USER $$POSTGRES_DB
+	bash scripts/restore.sh $(FILE)

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture: Workable-like application form</title></head>
+<body>
+  <div data-ui="application-form">
+    <h1>DevOps Engineer — FixtureCorp (Remote, Germany)</h1>
+    <form action="/submit" method="post" enctype="multipart/form-data"
+          onsubmit="window.__submitted = true; return false;">
+      <label for="firstname">First name *</label>
+      <input type="text" id="firstname" name="firstname" required>
+      <label for="lastname">Last name *</label>
+      <input type="text" id="lastname" name="lastname" required>
+      <label for="email">Email address *</label>
+      <input type="email" id="email" name="email" required>
+      <label for="phone">Telephone</label>
+      <input type="tel" id="phone" name="phone">
+      <label for="headline">Professional headline</label>
+      <input type="text" id="headline" name="headline">
+      <label for="resume">CV / Resume *</label>
+      <input type="file" id="resume" name="resume" accept=".pdf,.doc,.docx" required>
+      <label for="cover_letter_text">Cover letter summary</label>
+      <textarea id="cover_letter_text" name="cover_letter_text" rows="4"></textarea>
+      <label for="linkedin_url">LinkedIn</label>
+      <input type="text" id="linkedin_url" name="linkedin_url">
+      <label for="notice_period">Notice period</label>
+      <input type="text" id="notice_period" name="notice_period">
+      <button type="submit" id="submit-btn">Submit application</button>
+    </form>
+  </div>
+  <script>window.__submitted = false;</script>
+</body>
+</html>

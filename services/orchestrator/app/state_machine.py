@@ -21,6 +21,13 @@ VALID_TRANSITIONS: Dict[PipelineStatus, Set[PipelineStatus]] = {
     },
     PipelineStatus.QUALIFIED: {
         PipelineStatus.DOCUMENTS_READY,
+        PipelineStatus.DOC_REVIEW_REQUIRED,
+        PipelineStatus.FAILED,
+        PipelineStatus.BLOCKED,
+    },
+    PipelineStatus.DOC_REVIEW_REQUIRED: {
+        PipelineStatus.DOCUMENTS_READY,
+        PipelineStatus.QUALIFIED,
         PipelineStatus.FAILED,
         PipelineStatus.BLOCKED,
     },
@@ -91,6 +98,7 @@ def can_advance_mode(
         if target in {
             PipelineStatus.MATCHED,
             PipelineStatus.QUALIFIED,
+            PipelineStatus.DOC_REVIEW_REQUIRED,
             PipelineStatus.DOCUMENTS_READY,
             PipelineStatus.FORM_ANALYZED,
             PipelineStatus.READY_TO_APPLY,
@@ -102,6 +110,7 @@ def can_advance_mode(
 
     elif mode == AutomationMode.MATCH_ONLY:
         if target in {
+            PipelineStatus.DOC_REVIEW_REQUIRED,
             PipelineStatus.DOCUMENTS_READY,
             PipelineStatus.FORM_ANALYZED,
             PipelineStatus.READY_TO_APPLY,

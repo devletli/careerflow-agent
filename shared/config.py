@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_REDACT_PII: bool = True
+    LOG_FORMAT: str = "text"  # text | json (json enables structured logs, see shared.infra.jsonlog)
 
     @model_validator(mode="after")
     def _check(self):
@@ -74,6 +75,8 @@ class Settings(BaseSettings):
             raise ValueError("MIN_MATCH_SCORE must be 0-100")
         if self.MAX_APPLICATIONS_PER_HOUR > self.MAX_APPLICATIONS_PER_DAY:
             raise ValueError("hourly limit cannot exceed daily limit")
+        if self.LOG_FORMAT not in {"text", "json"}:
+            raise ValueError("LOG_FORMAT must be text or json")
         if self.ENV == "prod":
             if (self.POSTGRES_PASSWORD or "").lower() in WEAK_SECRETS:
                 raise ValueError("weak default secrets are not allowed in prod")

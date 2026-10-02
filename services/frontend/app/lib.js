@@ -22,3 +22,15 @@ export function StatusPill({ status }) {
   if (!status) return <span className="status-pill status-UNKNOWN">UNKNOWN</span>;
   return <span className={`status-pill status-${status}`}>{status}</span>;
 }
+
+// Dashboard strings (T7 i18n). Default locale comes from the
+// NEXT_PUBLIC_LOCALE environment variable ("en" unless set to "tr").
+// Add new user-facing text to services/frontend/i18n/{en,tr}.json,
+// never as hardcoded literals in page components.
+import enStrings from "../i18n/en.json";
+import trStrings from "../i18n/tr.json";
+
+const _locale = (typeof process !== "undefined" && process.env.NEXT_PUBLIC_LOCALE) || "en";
+
+export const LOCALE = String(_locale).toLowerCase().startsWith("tr") ? "tr" : "en";
+export const STRINGS = LOCALE === "tr" ? trStrings : enStrings;

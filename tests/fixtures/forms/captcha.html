@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture: form with CAPTCHA challenge</title></head>
+<body>
+  <h1>DevOps Engineer — FixtureCorp</h1>
+  <form action="/submit" method="post" onsubmit="window.__submitted = true; return false;">
+    <label for="first_name">First Name *</label>
+    <input type="text" id="first_name" name="first_name" required>
+    <label for="email">Email *</label>
+    <input type="email" id="email" name="email" required>
+    <div class="challenge-container" data-sitekey="fixture-site-key-0000">
+      <p>Please complete the security verification to continue.</p>
+    </div>
+    <button type="submit" id="submit-btn">Submit application</button>
+  </form>
+  <script>window.__submitted = false;</script>
+</body>
+</html>

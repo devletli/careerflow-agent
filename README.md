@@ -52,19 +52,19 @@ The current architecture is retained for now. For a single-user deployment, futu
 - [x] **Phase 3 — Matching Engine**: deterministic requirement extraction + semantic scoring + LLM explanation, configurable weighted score and threshold (`MIN_MATCH_SCORE`).
 - [x] **Phase 4 — Document Generation**: job-specific CV/cover-letter generation, language detection, MinIO artifact storage.
 - [x] **Phase 5 — Form Analysis**: application form/question inspection and classification (legal/work-authorization, preference, open-ended).
-- [x] **Phase 6 — Generic Browser Automation**: Playwright-based `browser-agent` with accessible-locator-first form filling, CAPTCHA/login-wall/MFA detection with hard stop, file upload support, structured as a `BrowserAutomationEngine` core with per-site `SiteAdapter` classes (`workable`, `generic` fallback) plus a dedicated `safety` module.
+- [x] **Phase 6 — Generic Browser Automation**: Playwright-based `browser-agent` with accessible-locator-first form filling, CAPTCHA/login-wall/MFA detection with hard stop, file upload support, structured as a `BrowserAutomationEngine` core with per-site `SiteAdapter` classes (`workable`, `greenhouse`, `lever`, `generic` fallback). Submit lives only in the engine behind explicit confirmation (`FULL_AUTO` + `AUTO_SUBMIT`).
 - [x] **Phase 7 — Pipeline Automation & Rate Limiting**: event-driven orchestrator with bounded exponential backoff, dead-letter routing, duplicate/eligibility checks, and daily/hourly rate limits before any submission.
 - [x] **Phase 8 — Frontend Dashboard**: Next.js dashboard (Overview, Jobs, Applications, Events, Settings) served at `http://localhost:3000`, proxied to the API through Next.js rewrites.
-- [ ] **Phase 9 — Additional ATS Connectors**: Greenhouse/Lever/Ashby/SmartRecruiters discovery connectors exist; a dedicated `generic` fallback adapter is present but application-side (submission) adapters remain Workable/BrowserAgent-generic only.
-- [x] **Phase 10 — Reliability Baseline**: matching evaluation dataset + automated eval, local browser regression fixture (Playwright fill-without-submit), minimal GitHub Actions CI, English dashboard UI, an API smoke/performance regression test, and a backup/restore runbook (`docs/runbook.md`). Production-scale load testing remains open (see Roadmap).
+- [x] **Phase 9 — Additional ATS Connectors (partial)**: Greenhouse/Lever/Ashby/SmartRecruiters discovery connectors exist; application-side (submission) adapters now cover Workable, Greenhouse, and Lever in `PREPARE` (fill-only) mode plus the `generic` fallback. Ashby/SmartRecruiters-specific submission flows remain open.
+- [x] **Phase 10 — Reliability Baseline**: matching evaluation dataset + automated eval, matching golden-set regression (`tests/golden/jobs.jsonl`), local browser regression fixtures (Playwright fill-without-submit, blocker hard-stop, Greenhouse/Lever adapters), GitHub Actions CI (backend tests, `mypy shared/`, frontend build, Compose validation, gitleaks), English dashboard UI with `tr` locale files (`services/frontend/i18n/`, `DASHBOARD_LOCALE`), CV grounding gate, prompt-injection/PII/API-key security tests, Redis Streams pending-recovery with DLQ routing, an API smoke/performance regression test, `scripts/backup.sh`/`restore.sh` with a restore-verification procedure, and JSON logging with correlation ids (`LOG_FORMAT=json`). Production-scale load testing remains open (see Roadmap).
 
 ## Roadmap
 
-Completed: Phases 0–8 and the Phase 10 reliability baseline above.
+Completed: Phases 0–8, Phase 9 submission adapters for Greenhouse/Lever, and the Phase 10 reliability baseline above (including T4 security tests, T5 stream recovery, and T7 CI/backup/i18n/golden-set/JSON logging).
 
 Current: manual pipeline operation via the dashboard; German-market discovery adapters (Bundesagentur, Arbeitnow) in regular use.
 
-Future (not started): additional browser/site adapters, larger evaluation dataset, production load testing, architecture simplification, observability.
+Future (not started): Ashby/SmartRecruiters submission adapters, larger evaluation dataset, production load testing, architecture simplification.
 
 ## Quick Start
 
@@ -102,16 +102,18 @@ python -m venv .venv
 .venv\Scripts\python -m pytest -v
 ```
 
-Lint (must pass for CI):
+Lint and type-check (must pass for CI):
 
 ```bash
 python -m ruff check .
+python -m mypy shared/
 ```
 
-Run the matching evaluation (offline, uses the production matcher, no LLM key needed):
+Run the matching evaluation and golden-set regression (offline, uses the
+production matcher, no LLM key needed):
 
 ```bash
-.venv\Scripts\python -m pytest tests/evals -v
+.venv\Scripts\python -m pytest tests/evals tests/golden -v
 ```
 
 Run the browser regression tests (offline fixture; the Playwright fill test
@@ -181,8 +183,9 @@ The numeric match score and qualification are always deterministic and based onl
 
 ## Remaining Risks / Known Limitations
 
-- The browser-agent's Playwright logic lives in one `worker.py` module; splitting it into a formal `BrowserAutomationEngine` core plus per-site `SiteAdapter` classes (as described in the master build prompt) would improve testability and make adding new ATS targets safer.
-- `tests/fixtures/application_form.html` covers form parsing, safe-answer resolution, and fill-without-submit locally; live browser-agent runs still exercise real public job boards in `PREPARE_APPLICATION` mode (fill-only, never submits).
+- `tests/fixtures/forms/` covers Greenhouse/Lever/Workable form parsing, safe-answer resolution, blocker hard-stop, and fill-without-submit locally; live browser-agent runs still exercise real public job boards in `PREPARE_APPLICATION` mode (fill-only, never submits).
 - `BROWSER_HEADLESS` must stay `true` in Docker (no X server in the containers); this is now the default in `.env`/`.env.example`.
-- Additional ATS *submission* adapters (Greenhouse/Lever/Ashby/SmartRecruiters-specific form flows) are not yet implemented; only discovery-side connectors exist for those sources.
-- Matching is keyword-taxonomy based: mandatory requirements outside the taxonomy, non-German/English language requirements, and junior titles are only weakly penalized (pinned by `evals/matching_cases.json` notes).
+- Additional ATS *submission* adapters (Ashby/SmartRecruiters-specific form flows) are not yet implemented; only discovery-side connectors plus the generic fallback exist for those sources.
+- Matching is keyword-taxonomy based: mandatory requirements outside the taxonomy, non-German/English language requirements, and junior titles are only weakly penalized (pinned by `evals/matching_cases.json` notes and `tests/golden/jobs.jsonl`).
+- `scripts/backup.sh`/`restore.sh` cover PostgreSQL dumps and MinIO bucket mirrors on a single host; point-in-time recovery and off-host copies remain manual.
+- JSON logging is opt-in (`LOG_FORMAT=json`); the default text format carries no structured correlation ids.

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture: Lever-like application form</title></head>
+<body>
+  <div class="application-form">
+    <h1>DevOps Engineer — FixtureCorp</h1>
+    <form action="/submit" method="post" enctype="multipart/form-data"
+          onsubmit="window.__submitted = true; return false;">
+      <label for="name">Full name *</label>
+      <input type="text" id="name" name="name" required>
+      <label for="email">Email *</label>
+      <input type="email" id="email" name="email" required>
+      <label for="phone">Phone</label>
+      <input type="tel" id="phone" name="phone">
+      <label for="org">Current company</label>
+      <input type="text" id="org" name="org">
+      <label for="resume">Resume *</label>
+      <input type="file" id="resume" name="resume" accept=".pdf,.doc,.docx" required>
+      <label for="linkedin">LinkedIn profile URL</label>
+      <input type="text" id="linkedin" name="linkedin">
+      <label for="comments">Additional information / cover letter</label>
+      <textarea id="comments" name="comments" rows="5"></textarea>
+      <label for="eeo_work_auth">Are you legally authorized to work in Germany? *</label>
+      <select id="eeo_work_auth" name="eeo_work_auth" required>
+        <option value="">Select...</option>
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+      </select>
+      <label for="salary_expectation">Salary expectation (annual gross, EUR)</label>
+      <input type="text" id="salary_expectation" name="salary_expectation">
+      <button type="submit" id="submit-btn">Apply for this job</button>
+    </form>
+  </div>
+  <script>window.__submitted = false;</script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 import logging
-from typing import AsyncGenerator, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, cast
 from contextlib import asynccontextmanager
 import redis.asyncio as aioredis
 from redis.exceptions import ResponseError
@@ -55,8 +55,8 @@ class RedisEventBus:
         """Publishes an event to a Redis Stream."""
         stream_name = stream or settings.STREAM_EVENTS
         r = await self.get_redis()
-        payload_data = {"data": event.to_json(), "event_type": event.event_type}
-        message_id = await r.xadd(stream_name, payload_data)
+        payload_data: Dict[str, Any] = {"data": event.to_json(), "event_type": event.event_type}
+        message_id = cast(str, await r.xadd(stream_name, payload_data))  # type: ignore[arg-type]
         logger.debug(f"Published event {event.event_type} ({event.event_id}) to {stream_name}: {message_id}")
         return message_id
 
@@ -100,13 +100,23 @@ class RedisEventBus:
         if not messages:
             return results
 
-        for stream_name, msg_list in messages:
-            for message_id, fields in msg_list:
+        for entry in messages:
+            if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+                continue
+            stream_name, msg_list = entry
+            if not isinstance(msg_list, (list, tuple)):
+                continue
+            for item in msg_list:
+                if not isinstance(item, (list, tuple)) or len(item) != 2:
+                    continue
+                message_id, fields = item
+                if not isinstance(fields, dict):
+                    continue
                 raw_json = fields.get("data")
                 if raw_json:
                     try:
                         event = parse_event(raw_json)
-                        results.append((message_id, event))
+                        results.append((str(message_id), event))
                     except Exception as ex:
                         logger.error(f"Failed to parse event from stream {stream_name} id {message_id}: {ex}")
         return results
@@ -115,6 +125,38 @@ class RedisEventBus:
         """Acknowledges a message in the consumer group."""
         r = await self.get_redis()
         return await r.xack(stream, group, message_id)
+
+    async def reclaim_events(
+        self,
+        stream: str,
+        group: str,
+        consumer: str,
+        min_idle_ms: int = 120_000,
+        count: int = 50,
+    ) -> List[Tuple[str, BaseEvent]]:
+        """Reclaims idle pending messages (T5) and parses them as events.
+
+        Poison messages (>= MAX_DELIVERIES) are DLQ-routed inside
+        shared.infra.recovery and never returned. Call this at the top of
+        each worker loop before read_events() so crashed-worker messages
+        are reprocessed (idempotently) instead of stuck in the PEL.
+        """
+        from shared.infra.recovery import reclaim_stuck
+
+        r = await self.get_redis()
+        await self.ensure_consumer_group(stream, group)
+        results: List[Tuple[str, BaseEvent]] = []
+        async for message_id, fields in reclaim_stuck(
+            r, stream, group, consumer, min_idle_ms=min_idle_ms, count=count
+        ):
+            raw_json = fields.get("data")
+            if not raw_json:
+                continue
+            try:
+                results.append((message_id, parse_event(raw_json)))
+            except Exception as ex:
+                logger.error(f"Failed to parse reclaimed event {message_id}: {ex}")
+        return results
 
     @asynccontextmanager
     async def acquire_lock(
@@ -152,7 +194,7 @@ class RedisEventBus:
     ) -> str:
         """Pushes an unprocessable or exhausted event to the dead-letter stream."""
         r = await self.get_redis()
-        dlq_data = {
+        dlq_data: Dict[str, Any] = {
             "original_event_id": original_event.event_id,
             "event_type": original_event.event_type,
             "data": original_event.to_json(),
@@ -160,7 +202,7 @@ class RedisEventBus:
             "stack_trace": stack_trace or "",
             "retry_count": str(retry_count),
         }
-        message_id = await r.xadd(settings.STREAM_DEAD_LETTER, dlq_data)
+        message_id = cast(str, await r.xadd(settings.STREAM_DEAD_LETTER, dlq_data))  # type: ignore[arg-type]
         logger.warning(
             f"Event {original_event.event_id} ({original_event.event_type}) routed to dead letter stream: {message_id}"
         )

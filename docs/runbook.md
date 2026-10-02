@@ -8,6 +8,7 @@ All commands run from the repository root with the stack up
 
 ```bash
 make backup
+# equivalent: bash scripts/backup.sh
 ```
 
 This writes a compressed dump to `backups/db-YYYY-MM-DD.sql.gz`
@@ -20,10 +21,30 @@ Restore **overwrites** the current database. Stop the workers first so
 nothing writes mid-restore:
 
 ```bash
-docker compose stop orchestrator job-discovery job-matching cv-generator application-analyzer browser-agent api
 make restore FILE=backups/db-YYYY-MM-DD.sql.gz
-docker compose start api orchestrator job-discovery job-matching cv-generator application-analyzer browser-agent
+# equivalent: bash scripts/restore.sh backups/db-YYYY-MM-DD.sql.gz
+# with MinIO objects: bash scripts/restore.sh backups/db-YYYY-MM-DD.sql.gz --minio-dir ./backups/minio-job-agent-private
 ```
+
+The script stops the workers first (nothing may write mid-restore),
+restores the dump, then restarts the workers.
+
+## Restore verification
+
+After any restore, confirm the stack is healthy before resuming:
+
+```bash
+curl -s http://127.0.0.1:8000/health
+docker compose ps
+python -m pytest tests/unit/test_backup_scripts.py -q
+```
+
+Expected: `/health` returns `{"status": "ok", ...}`, all services
+`Up`, and the backup-script test passes (it checks that
+`scripts/backup.sh` / `scripts/restore.sh` contain the required
+`pg_dump` / `psql` / `mc mirror` steps and fail closed on missing
+input). Then spot-check the dashboard at `http://localhost:3000`
+(Jobs / Applications counts look plausible).
 
 ## MinIO bucket backup
 

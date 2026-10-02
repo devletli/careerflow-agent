@@ -7,6 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY shared ./shared
 RUN pip install --no-cache-dir -e ./shared
 
+COPY browser ./browser
 COPY services/browser-agent/app ./app
 COPY profile ./profile
 

@@ -1,0 +1,16 @@
+{
+  "tabs": ["Genel Bakış", "İlanlar", "Belgeler", "Başvurular", "Olaylar", "Ayarlar"],
+  "actions": [
+    { "id": "discover", "label": "İş Ara", "description": "Tüm kaynaklarda yeni ilanları ara." },
+    { "id": "match", "label": "Eşleştirmeyi Çalıştır", "description": "Yeni ilanları profilinle eşleştir." },
+    { "id": "generate_documents", "label": "CV ve Ön Yazı Oluştur", "description": "Uygun ilanlar için belge üret." },
+    { "id": "analyze_applications", "label": "Formları Analiz Et", "description": "Belgeleri hazır ilanların başvuru formlarını incele." },
+    { "id": "fill_applications", "label": "Formları Doldur", "description": "Hazır başvuruları doldur; asla göndermez." }
+  ],
+  "openInBrowser": "Tarayıcıda Aç",
+  "fillWithPlaywright": "Playwright ile Doldur",
+  "submitWithPlaywright": "Playwright ile Gönder",
+  "confirmStart": "\"{label}\" başlatılsın mı?",
+  "confirmFill": "Başvuru formları doldurulacak. CAPTCHA, MFA, belirsiz soru veya gönderim adımında süreç durur; AUTO_SUBMIT kapalıyken hiçbir şey gönderilmez. Devam edilsin mi?",
+  "confirmSubmit": "Playwright {name} için formu doldurup göndere basacak. CAPTCHA, MFA, giriş gereksinimi veya doğrulanmamış yasal sorularda süreç durur. Devam edilsin mi?"
+}

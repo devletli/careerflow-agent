@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Any
 from uuid import uuid4
 from sqlalchemy import (
     Column,
@@ -17,7 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, relationship
 
-Base = declarative_base()
+Base: Any = declarative_base()
 
 # Use JSONB on PostgreSQL, standard JSON on SQLite/others
 JSONType = JSON().with_variant(JSONB, "postgresql")
