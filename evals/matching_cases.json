@@ -1,0 +1,274 @@
+{
+  "version": 1,
+  "description": "Deterministic matching evaluation cases. Scores are produced by the production JobMatchingEngine (services/job-matching/app/matcher.py) with min_threshold=90. Expected ranges were calibrated against the real implementation and carry slack so only genuine regressions fail. LLM explanations are NOT part of this eval.",
+  "min_threshold": 90.0,
+  "cases": [
+    {
+      "id": "strong-devops",
+      "category": "strong",
+      "title": "Senior DevOps Engineer",
+      "description": "We need a Senior DevOps Engineer with 5+ years of experience. You will build Kubernetes clusters, Docker images, Terraform modules and CI/CD pipelines on AWS. English required.",
+      "requirements": ["5+ years experience with Kubernetes", "Must have: Terraform", "AWS required"],
+      "location": "Berlin",
+      "remote_status": "onsite",
+      "expected": {"min_score": 95.0, "max_score": 100.0, "qualifications": ["QUALIFIED"]}
+    },
+    {
+      "id": "strong-ai",
+      "category": "strong",
+      "title": "AI Automation Engineer (Remote)",
+      "description": "Remote AI Automation Engineer to build LLM applications with RAG, LangGraph and MCP integrations in Python. 4+ years of software experience. English required.",
+      "requirements": ["Must have: Python", "Experience with LLM applications"],
+      "location": "Remote",
+      "remote_status": "remote",
+      "expected": {"min_score": 94.0, "max_score": 100.0, "qualifications": ["QUALIFIED"]}
+    },
+    {
+      "id": "strong-alm",
+      "category": "strong",
+      "title": "ALM Consultant",
+      "description": "ALM Consultant for application lifecycle management with Jira. Beratung in Berlin. Deutsch und Englisch erforderlich.",
+      "requirements": ["Beratungserfahrung mit Jira"],
+      "location": "10115 Berlin, Berlin",
+      "remote_status": "onsite",
+      "expected": {"min_score": 95.0, "max_score": 100.0, "qualifications": ["QUALIFIED"]}
+    },
+    {
+      "id": "strong-test",
+      "category": "strong",
+      "title": "Test Automation Engineer",
+      "description": "Test Automation Engineer with Jenkins CI/CD and test automation frameworks. 3+ Jahre Erfahrung. Berlin, hybrid.",
+      "requirements": ["Must have: Jenkins"],
+      "location": "Berlin",
+      "remote_status": "onsite",
+      "expected": {"min_score": 94.0, "max_score": 100.0, "qualifications": ["QUALIFIED"]}
+    },
+    {
+      "id": "strong-mlops",
+      "category": "strong",
+      "title": "MLOps Engineer",
+      "description": "MLOps Engineer: Python, Kubernetes, Docker and MLflow for model deployment. 3+ years experience. Berlin. English required.",
+      "requirements": [],
+      "location": "Berlin",
+      "remote_status": "onsite",
+      "expected": {"min_score": 94.0, "max_score": 100.0, "qualifications": ["QUALIFIED"]}
+    },
+    {
+      "id": "medium-platform",
+      "category": "medium",
+      "title": "Platform Engineer",
+      "description": "Platform Engineer in Munich, Bavaria. Kubernetes, Prometheus, Grafana and GitLab. 3+ years experience. Onsite.",
+      "requirements": ["Experience with Prometheus and Grafana"],
+      "location": "Munich, Bavaria",
+      "remote_status": "onsite",
+      "expected": {"min_score": 69.0, "max_score": 79.0, "qualifications": ["NOT_QUALIFIED"]},
+      "note": "Missing Prometheus/Grafana/GitLab skills plus non-preferred location keep this below the threshold."
+    },
+    {
+      "id": "medium-sre",
+      "category": "medium",
+      "title": "Site Reliability Engineer",
+      "description": "SRE for monitoring with Prometheus and Grafana on Linux. 6+ years experience. Berlin onsite. English required.",
+      "requirements": ["6+ years experience in monitoring"],
+      "location": "Berlin",
+      "remote_status": "onsite",
+      "expected": {"min_score": 76.0, "max_score": 85.0, "qualifications": ["REVIEW"]}
+    },
+    {
+      "id": "medium-cloud",
+      "category": "medium",
+      "title": "Cloud Engineer",
+      "description": "Cloud Engineer with AWS, Azure and GCP experience. Terraform required. Berlin. English required.",
+      "requirements": ["Must have: Terraform"],
+      "location": "Berlin",
+      "remote_status": "onsite",
+      "expected": {"min_score": 91.0, "max_score": 99.0, "qualifications": ["QUALIFIED"]},
+      "note": "Azure/GCP are treated as missing evidence (transferable cloud skill), not missing skills."
+    },
+    {
+      "id": "partial-gitlab",
+      "category": "medium",
+      "title": "DevOps Engineer",
+      "description": "DevOps Engineer with GitLab pipelines, GitHub Actions and Jenkins. 4+ years experience. Remote within Germany. English required.",
+      "requirements": ["Must have: GitLab"],
+      "location": "Remote",
+      "remote_status": "remote",
+      "expected": {"min_score": 80.0, "max_score": 88.0, "qualifications": ["REVIEW"], "min_hard_requirements": 1},
+      "note": "Partial skill overlap: GitLab/GitHub missing, Jenkins present."
+    },
+    {
+      "id": "weak-frontend",
+      "category": "weak",
+      "title": "Frontend Developer (React)",
+      "description": "Frontend Developer with React, TypeScript and CSS. Figma collaboration. 2+ years experience. Berlin onsite.",
+      "requirements": ["2+ years React experience"],
+      "location": "Berlin",
+      "remote_status": "onsite",
+      "expected": {"min_score": 60.0, "max_score": 71.0, "qualifications": ["NOT_QUALIFIED"]}
+    },
+    {
+      "id": "weak-data",
+      "category": "weak",
+      "title": "Data Analyst",
+      "description": "Data Analyst with SQL, Tableau and Excel. Stakeholder reporting. Berlin onsite. German required.",
+      "requirements": ["SQL expertise required"],
+      "location": "Berlin",
+      "remote_status": "onsite",
+      "expected": {"min_score": 60.0, "max_score": 71.0, "qualifications": ["NOT_QUALIFIED"]}
+    },
+    {
+      "id": "weak-java",
+      "category": "weak",
+      "title": "Java Backend Developer",
+      "description": "Java Backend Developer with Spring Boot and Maven. 3+ years experience. Berlin onsite.",
+      "requirements": ["3+ years Java experience"],
+      "location": "Berlin",
+      "remote_status": "onsite",
+      "expected": {"min_score": 60.0, "max_score": 71.0, "qualifications": ["NOT_QUALIFIED"]}
+    },
+    {
+      "id": "mandatory-gitlab",
+      "category": "mandatory-missing",
+      "title": "DevOps Engineer",
+      "description": "DevOps Engineer with GitLab, Prometheus and Grafana. Must have: GitLab administration. 5+ years experience. Berlin onsite.",
+      "requirements": ["Must have: GitLab administration", "Prometheus expertise required"],
+      "location": "Berlin",
+      "remote_status": "onsite",
+      "expected": {"min_score": 72.0, "max_score": 81.0, "qualifications": ["NOT_QUALIFIED"], "min_hard_requirements": 1},
+      "note": "Mandatory skills that exist in the keyword taxonomy (GitLab, Prometheus) lower the score via missing skills."
+    },
+    {
+      "id": "seniority-junior",
+      "category": "seniority",
+      "title": "Junior DevOps Engineer",
+      "description": "Junior DevOps Engineer internship for students. Docker basics welcome. Berlin onsite.",
+      "requirements": ["Currently enrolled student"],
+      "location": "Berlin",
+      "remote_status": "onsite",
+      "expected": {"min_score": 88.0, "max_score": 96.0, "qualifications": ["QUALIFIED"], "components": {"seniority": 30.0}},
+      "note": "KNOWN LIMITATION: the seniority penalty (30.0) costs only ~7 points and junior titles are not excluded, so this still qualifies. The eval pins the penalty component so any change is detected."
+    },
+    {
+      "id": "seniority-principal",
+      "category": "seniority",
+      "title": "Principal Cloud Architect",
+      "description": "Principal Cloud Architect with 12+ years of experience leading AWS transformations. Berlin. English required.",
+      "requirements": ["12+ years experience required"],
+      "location": "Berlin",
+      "remote_status": "onsite",
+      "expected": {"min_score": 92.0, "max_score": 99.0, "qualifications": ["QUALIFIED"]}
+    },
+    {
+      "id": "lang-support",
+      "category": "language",
+      "title": "IT Support Specialist (m/w/d)",
+      "description": "IT Support Specialist. Deutsch C2 erforderlich, Kundenbetreuung vor Ort. 2+ Jahre Erfahrung. Hamburg onsite.",
+      "requirements": ["Deutsch C2 erforderlich"],
+      "location": "Hamburg",
+      "remote_status": "onsite",
+      "expected": {"min_score": 58.0, "max_score": 68.0, "qualifications": ["NOT_QUALIFIED"]}
+    },
+    {
+      "id": "lang-german-b2",
+      "category": "language",
+      "title": "DevOps Engineer",
+      "description": "DevOps Engineer mit Kubernetes und Terraform. Deutsch erforderlich, 5+ Jahre Erfahrung. Berlin vor Ort.",
+      "requirements": [],
+      "location": "Berlin",
+      "remote_status": "onsite",
+      "profile_override": {"languages": {"German": "B2", "English": "C1"}},
+      "expected": {"min_score": 93.0, "max_score": 100.0, "qualifications": ["QUALIFIED"], "components": {"language": 80.0}},
+      "note": "Exercises the sub-C1 German penalty path (language component 80.0) via a B2 profile override."
+    },
+    {
+      "id": "lang-french",
+      "category": "language",
+      "title": "Technicien support",
+      "description": "Technicien support avec francais courant exige. Experience 3 ans. Paris sur site.",
+      "requirements": ["Experience 3 ans"],
+      "location": "Paris",
+      "remote_status": "onsite",
+      "expected": {"min_score": 58.0, "max_score": 68.0, "qualifications": ["NOT_QUALIFIED"]},
+      "note": "KNOWN LIMITATION: the matcher only evaluates German/English mentions, so a French-only requirement is invisible; the low score comes from skills/location instead."
+    },
+    {
+      "id": "loc-vienna",
+      "category": "location",
+      "title": "DevOps Engineer",
+      "description": "DevOps Engineer with Kubernetes and Terraform. 5+ years experience. Vienna, Austria onsite. No remote.",
+      "requirements": ["5+ years experience"],
+      "location": "Vienna, Austria",
+      "remote_status": "onsite",
+      "expected": {"min_score": 92.0, "max_score": 100.0, "qualifications": ["QUALIFIED"], "components": {"location": 50.0}},
+      "note": "KNOWN LIMITATION: location weight is only 0.05, so a non-preferred location costs ~2.5 points. The eval pins the location component."
+    },
+    {
+      "id": "unrelated-care",
+      "category": "unrelated",
+      "title": "Pflegekraft (m/w/d)",
+      "description": "Pflegekraft mit abgeschlossener Ausbildung in der Altenpflege. Schichtdienst. München vor Ort.",
+      "requirements": ["Abgeschlossene Ausbildung in der Pflege"],
+      "location": "Munich, Bavaria",
+      "remote_status": "onsite",
+      "expected": {"min_score": 58.0, "max_score": 68.0, "qualifications": ["NOT_QUALIFIED"]}
+    },
+    {
+      "id": "unrelated-driver",
+      "category": "unrelated",
+      "title": "Truck Driver",
+      "description": "Truck driver with CE license for long-haul routes. Night shifts. Hamburg onsite.",
+      "requirements": ["Valid CE driving license required"],
+      "location": "Hamburg",
+      "remote_status": "onsite",
+      "expected": {"min_score": 58.0, "max_score": 68.0, "qualifications": ["NOT_QUALIFIED"]}
+    },
+    {
+      "id": "excluded-junior",
+      "category": "excluded-role",
+      "title": "Junior Developer",
+      "description": "Junior Developer with 1 year of Python experience. Mentoring provided. Berlin onsite.",
+      "requirements": ["1 year experience"],
+      "location": "Berlin",
+      "remote_status": "onsite",
+      "expected": {"min_score": 73.0, "max_score": 82.0, "qualifications": ["NOT_QUALIFIED"]}
+    },
+    {
+      "id": "excluded-sales",
+      "category": "excluded-role",
+      "title": "Pure Sales Representative",
+      "description": "Pure Sales Representative for outbound calls. Commission based. Berlin onsite.",
+      "requirements": ["Sales experience required"],
+      "location": "Berlin",
+      "remote_status": "onsite",
+      "expected": {"min_score": 49.0, "max_score": 60.0, "qualifications": ["NOT_QUALIFIED"]}
+    },
+    {
+      "id": "edge-title-only",
+      "category": "edge",
+      "title": "DevOps Engineer",
+      "description": "",
+      "requirements": [],
+      "location": "Berlin",
+      "remote_status": "onsite",
+      "expected": {"min_score": 94.0, "max_score": 100.0, "qualifications": ["QUALIFIED"]},
+      "note": "Title alone carries the match when the description is empty."
+    },
+    {
+      "id": "edge-empty",
+      "category": "edge",
+      "title": "",
+      "description": "General job posting without details.",
+      "requirements": [],
+      "location": null,
+      "remote_status": null,
+      "expected": {"min_score": 58.0, "max_score": 68.0, "qualifications": ["NOT_QUALIFIED"]}
+    }
+  ],
+  "ordering": [
+    ["strong-devops", "partial-gitlab", "weak-frontend"],
+    ["strong-ai", "medium-platform", "unrelated-care"],
+    ["strong-devops", "mandatory-gitlab"],
+    ["medium-sre", "weak-java"],
+    ["excluded-junior", "excluded-sales"]
+  ]
+}

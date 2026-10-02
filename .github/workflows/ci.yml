@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./shared pytest pytest-asyncio aiosqlite httpx beautifulsoup4 playwright
+
+      - name: Install Chromium for browser regression tests
+        run: python -m playwright install --with-deps chromium
+
+      - name: Backend tests (unit + integration + matching eval)
+        run: python -m pytest -v
+
+      - name: Validate Docker Compose configuration
+        run: docker compose config --quiet
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Production build
+        run: npm run build

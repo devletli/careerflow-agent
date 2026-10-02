@@ -91,18 +91,18 @@ function Toolbar({ label, onRefresh, count }) {
 }
 
 const ACTIONS = [
-  { id: "discover", label: "İş Ara", description: "Tüm kaynaklarda yeni ilanları ara." },
-  { id: "match", label: "Eşleştirme Çalıştır", description: "Yeni ilanları profilinle eşleştir." },
-  { id: "generate_documents", label: "CV ve Mektup Üret", description: "Uygun ilanlar için belgeleri üret." },
-  { id: "analyze_applications", label: "Formları Analiz Et", description: "Hazır belgeli ilanların başvuru formlarını incele." },
-  { id: "fill_applications", label: "Formları Doldur", description: "Hazır başvuruları doldurur; gönderim yapmaz." },
+  { id: "discover", label: "Search Jobs", description: "Search all sources for new listings." },
+  { id: "match", label: "Run Matching", description: "Match new listings against your profile." },
+  { id: "generate_documents", label: "Generate CV & Cover Letter", description: "Generate documents for qualifying listings." },
+  { id: "analyze_applications", label: "Analyze Forms", description: "Inspect application forms for listings with ready documents." },
+  { id: "fill_applications", label: "Fill Forms", description: "Fill ready applications; never submits." },
 ];
 
 function ActionPanel({ onRun, runningAction, actionMessage }) {
   return (
     <div className="panel" style={{ marginBottom: 16 }}>
-      <h3 style={{ marginTop: 0 }}>Pipeline Kontrolleri</h3>
-      <p className="muted">Her işlem sıraya alınır ve ilgili worker tarafından güvenli biçimde yürütülür.</p>
+      <h3 style={{ marginTop: 0 }}>Pipeline Controls</h3>
+      <p className="muted">Each action is queued and executed safely by the responsible worker.</p>
       {actionMessage && <div className="action-message">{actionMessage}</div>}
       <div className="action-grid">
         {ACTIONS.map((action) => (
@@ -114,7 +114,7 @@ function ActionPanel({ onRun, runningAction, actionMessage }) {
               disabled={Boolean(runningAction)}
               onClick={() => onRun(action)}
             >
-              {runningAction === action.id ? "Sıraya alınıyor…" : action.label}
+              {runningAction === action.id ? "Queueing…" : action.label}
             </button>
           </div>
         ))}
@@ -193,9 +193,9 @@ function JobsTab({ jobs, error, refresh }) {
             <th>Location</th>
             <th>Remote</th>
             <th>Status</th>
-            <th>Skor</th>
-            <th>Sonuç</th>
-            <th>Belgeler</th>
+            <th>Score</th>
+            <th>Result</th>
+            <th>Documents</th>
             <th>Discovered</th>
             <th>Link</th>
           </tr>
@@ -215,7 +215,7 @@ function JobsTab({ jobs, error, refresh }) {
               <td>{formatDate(j.created_at)}</td>
               <td>
                 <a className="link" href={j.url} target="_blank" rel="noreferrer">
-                  view
+                  View
                 </a>
               </td>
             </tr>
@@ -268,20 +268,20 @@ function ApplicationsTab({ applications, error, refresh, onSubmit, submittingApp
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Tarayıcıda Aç
+                  Open in Browser
                 </a>
                 <a
                   className="link"
                   href={`ai-job-agent://prepare?application_id=${a.id}`}
                 >
-                  Playwright ile Doldur
+                  Fill with Playwright
                 </a>
                 <button
                   className="refresh-btn primary-btn"
                   disabled={Boolean(submittingApplicationId)}
                   onClick={() => onSubmit(a)}
                 >
-                  {submittingApplicationId === a.id ? "Gönderiliyor…" : "Playwright ile Gönder"}
+                  {submittingApplicationId === a.id ? "Submitting…" : "Submit with Playwright"}
                 </button>
               </td>
             </tr>
@@ -302,17 +302,17 @@ function ApplicationsTab({ applications, error, refresh, onSubmit, submittingApp
 function DocumentsTab({ documents, error, refresh }) {
   return (
     <div className="panel">
-      <Toolbar label="Üretilen CV ve mektuplar" onRefresh={refresh} count={documents?.length} />
+      <Toolbar label="Generated CVs and cover letters" onRefresh={refresh} count={documents?.length} />
       {error && <div className="error-banner">{error}</div>}
       <table>
         <thead>
           <tr>
-            <th>Tür</th>
-            <th>İş</th>
-            <th>Dil</th>
-            <th>Versiyon</th>
-            <th>Oluşturulma</th>
-            <th>Explorer Konumu</th>
+            <th>Type</th>
+            <th>Job</th>
+            <th>Language</th>
+            <th>Version</th>
+            <th>Created</th>
+            <th>Artifact Path</th>
           </tr>
         </thead>
         <tbody>
@@ -327,7 +327,7 @@ function DocumentsTab({ documents, error, refresh }) {
             </tr>
           ))}
           {(!documents || documents.length === 0) && (
-            <tr><td colSpan={6} className="muted">Henüz belge üretilmedi.</td></tr>
+            <tr><td colSpan={6} className="muted">No documents generated yet.</td></tr>
           )}
         </tbody>
       </table>
@@ -429,8 +429,8 @@ export default function Home() {
   const runAction = useCallback(async (action) => {
     const requiresExtraWarning = action.id === "fill_applications";
     const prompt = requiresExtraWarning
-      ? "Başvuru formları doldurulacak. CAPTCHA, MFA, belirsiz soru veya gönderim durumunda işlem durur; AUTO_SUBMIT kapalı olduğu sürece başvuru gönderilmez. Devam edilsin mi?"
-      : `"${action.label}" işlemi başlatılsın mı?`;
+      ? "Application forms will be filled. The process stops on CAPTCHA, MFA, ambiguous questions, or submission; nothing is submitted while AUTO_SUBMIT is off. Continue?"
+      : `Start "${action.label}"?`;
     if (!window.confirm(prompt)) return;
 
     setRunningAction(action.id);
@@ -441,7 +441,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: action.id, confirmed: true }),
       });
-      setActionMessage(`${action.label} kuyruğa alındı (${result.correlation_id}).`);
+      setActionMessage(`${action.label} queued (${result.correlation_id}).`);
       setTimeout(() => {
         jobsQ.refresh();
         applicationsQ.refresh();
@@ -449,7 +449,7 @@ export default function Home() {
         eventsQ.refresh();
       }, 1000);
     } catch (error) {
-      setActionMessage(`${action.label} başlatılamadı: ${error.message}`);
+      setActionMessage(`Could not start ${action.label}: ${error.message}`);
     } finally {
       setRunningAction(null);
     }
@@ -458,8 +458,8 @@ export default function Home() {
   const submitApplication = useCallback(async (application) => {
     const name = `${application.company} — ${application.title}`;
     if (!window.confirm(
-      `${name} için Playwright formu doldurup gönder butonuna basacak. `
-      + "CAPTCHA, MFA, giriş gereksinimi veya doğrulanmamış hukuki soru varsa işlem durur. Devam edilsin mi?"
+      `Playwright will fill the form for ${name} and press submit. `
+      + "The process stops on CAPTCHA, MFA, sign-in requirements, or unverified legal questions. Continue?"
     )) return;
 
     setRunningAction(application.id);
@@ -474,13 +474,13 @@ export default function Home() {
           confirmed: true,
         }),
       });
-      setActionMessage(`${name} için gönderim kuyruğa alındı (${result.correlation_id}).`);
+      setActionMessage(`Submission for ${name} queued (${result.correlation_id}).`);
       setTimeout(() => {
         applicationsQ.refresh();
         eventsQ.refresh();
       }, 1000);
     } catch (error) {
-      setActionMessage(`${name} için gönderim başlatılamadı: ${error.message}`);
+      setActionMessage(`Could not start submission for ${name}: ${error.message}`);
     } finally {
       setRunningAction(null);
     }

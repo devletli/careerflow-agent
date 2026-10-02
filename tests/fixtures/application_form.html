@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<!-- Deterministic local fixture for browser regression tests.
+     Simulates a realistic job application form. NEVER submitted by tests. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>FixtureCorp - Application for DevOps Engineer</title>
+</head>
+<body>
+  <h1>Apply: DevOps Engineer (Berlin)</h1>
+  <form id="application-form" action="/submit" method="post" enctype="multipart/form-data"
+        onsubmit="window.__submitted = true; return false;">
+    <label for="first_name">First Name</label>
+    <input type="text" id="first_name" name="first_name" required>
+
+    <label for="last_name">Last Name</label>
+    <input type="text" id="last_name" name="last_name" required>
+
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" required>
+
+    <label for="phone">Phone</label>
+    <input type="tel" id="phone" name="phone">
+
+    <label for="cover_letter_text">Cover Letter</label>
+    <textarea id="cover_letter_text" name="cover_letter_text" rows="4"></textarea>
+
+    <label for="resume">Resume / CV (PDF)</label>
+    <input type="file" id="resume" name="resume" accept=".pdf" required>
+
+    <label for="work_authorization">Are you authorized to work in Germany?</label>
+    <select id="work_authorization" name="work_authorization" required>
+      <option value="">Please choose</option>
+      <option value="yes">Yes</option>
+      <option value="no">No</option>
+    </select>
+
+    <label for="salary_expectation">Salary expectation (annual gross, EUR)</label>
+    <input type="text" id="salary_expectation" name="salary_expectation">
+
+    <label for="notice_period">Notice period</label>
+    <input type="text" id="notice_period" name="notice_period">
+
+    <!-- Protection control: must never be bypassed or auto-solved -->
+    <div class="g-recaptcha" data-sitekey="fixture-site-key-0000">
+      <span>I am not a robot (fixture CAPTCHA stand-in)</span>
+      <input type="checkbox" id="captcha_box" name="captcha_box" aria-label="I am not a robot">
+    </div>
+
+    <button type="submit" id="submit-btn">Submit application</button>
+  </form>
+  <script>window.__submitted = false;</script>
+</body>
+</html>

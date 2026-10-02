@@ -1,6 +1,29 @@
 # AI Job Agent — Microservice Edition
 
-A modular AI job-search and application pipeline.
+An AI-powered job-search/career agent providing:
+
+- job discovery across public ATS job boards and German-market sources
+- deterministic profile/job matching with LLM-assisted reasoning
+- job-specific CV and cover-letter generation
+- application-form analysis with safe-answer resolution
+- browser-assisted application workflow with human-in-the-loop safety
+
+The system fills forms but never submits without explicit confirmation
+(`AUTOMATION_MODE=PREPARE_APPLICATION` by default, `AUTO_SUBMIT=false`).
+
+## Quality
+
+- Matching evaluation dataset (`evals/matching_cases.json`, 25 synthetic cases)
+  with automated evaluation (`tests/evals/test_matching_eval.py`) that runs
+  the production matcher offline — no LLM access required.
+- Browser regression fixture (`tests/fixtures/application_form.html`) covering
+  field detection, safe-answer resolution, CAPTCHA non-bypass, and a Playwright
+  fill-without-submit check (`tests/unit/test_browser_regression.py`).
+- Minimal GitHub Actions CI (`.github/workflows/ci.yml`): backend tests,
+  Chromium browser regression, frontend production build, Compose validation.
+- API smoke/performance regression test (`tests/integration/test_api_smoke.py`):
+  read-only burst against the real FastAPI app with mocked dependencies.
+  This is a smoke test, not production load testing.
 
 ## Architecture
 
@@ -15,9 +38,11 @@ Services:
 - `postgres`: persistent authoritative state (12 core tables, Alembic migrations)
 - `redis`: queue/event transport (Redis Streams, consumer groups, dead-letter routing)
 - `minio`: document/artifact storage (private bucket enforcement)
-- `frontend`: dashboard
+- `frontend`: dashboard (English UI)
 
 The system is deliberately asynchronous and idempotent. Every stage reads/writes database state and can be rerun safely.
+
+The current architecture is retained for now. For a single-user deployment, future work may simplify service boundaries and reduce operational complexity.
 
 ## Phase Status
 
@@ -31,7 +56,15 @@ The system is deliberately asynchronous and idempotent. Every stage reads/writes
 - [x] **Phase 7 — Pipeline Automation & Rate Limiting**: event-driven orchestrator with bounded exponential backoff, dead-letter routing, duplicate/eligibility checks, and daily/hourly rate limits before any submission.
 - [x] **Phase 8 — Frontend Dashboard**: Next.js dashboard (Overview, Jobs, Applications, Events, Settings) served at `http://localhost:3000`, proxied to the API through Next.js rewrites.
 - [ ] **Phase 9 — Additional ATS Connectors**: Greenhouse/Lever/Ashby/SmartRecruiters discovery connectors exist; a dedicated `generic` fallback adapter is present but application-side (submission) adapters remain Workable/BrowserAgent-generic only.
-- [ ] **Phase 10 — Hardening & Load Testing**: load tests, browser regression fixtures, and backup/restore runbooks are not yet implemented.
+- [x] **Phase 10 — Reliability Baseline**: matching evaluation dataset + automated eval, local browser regression fixture (Playwright fill-without-submit), minimal GitHub Actions CI, English dashboard UI, and an API smoke/performance regression test. Production-scale load testing and backup/restore runbooks remain open (see Roadmap).
+
+## Roadmap
+
+Completed: Phases 0–8 and the Phase 10 reliability baseline above.
+
+Current: manual pipeline operation via the dashboard; German-market discovery adapters (Bundesagentur, Arbeitnow) in regular use.
+
+Future (not started): additional browser/site adapters, larger evaluation dataset, production load testing, backup/restore runbooks, architecture simplification, observability.
 
 ## Quick Start
 
@@ -60,6 +93,28 @@ python -m venv .venv
 .venv\Scripts\python -m pytest -v
 ```
 
+Run the matching evaluation (offline, uses the production matcher, no LLM key needed):
+
+```bash
+.venv\Scripts\python -m pytest tests/evals -v
+```
+
+Run the browser regression tests (offline fixture; the Playwright fill test
+skips automatically if Chromium is not installed):
+
+```bash
+.venv\Scripts\python -m pytest tests/unit/test_browser_regression.py -v
+# optional, to run the Playwright part: python -m playwright install chromium
+```
+
+Build the frontend dashboard:
+
+```bash
+cd services/frontend
+npm install
+npm run build
+```
+
 Validate Docker Compose configuration:
 
 ```bash
@@ -82,8 +137,8 @@ alembic -c db/alembic.ini upgrade head
 - Every job and application has a deterministic SHA-256 fingerprint.
 - LLMs never invent candidate facts.
 - Site-specific browser logic is implemented through adapters, not hard-coded into the core agent.
-- `AUTOMATION_MODE=PREPARE_APPLICATION` (the default) fills but never submits. The dashboard's per-application **Playwright ile Gönder** control requires an explicit confirmation and submits only that selected application in the same browser session used to fill it. `AUTO_SUBMIT=true` + `FULL_AUTO` remain required for unattended submission.
-- **Tarayıcıda Aç** opens the selected application URL in the user's regular browser so the user can complete a CAPTCHA, sign-in, MFA, or a question that cannot be answered from verified profile facts. The agent never bypasses these checks.
+- `AUTOMATION_MODE=PREPARE_APPLICATION` (the default) fills but never submits. The dashboard's per-application **Submit with Playwright** control requires an explicit confirmation and submits only that selected application in the same browser session used to fill it. `AUTO_SUBMIT=true` + `FULL_AUTO` remain required for unattended submission.
+- **Open in Browser** opens the selected application URL in the user's regular browser so the user can complete a CAPTCHA, sign-in, MFA, or a question that cannot be answered from verified profile facts. The agent never bypasses these checks.
 
 ### Visible local Playwright helper (Windows)
 
@@ -93,7 +148,7 @@ The Docker browser worker must remain headless, so use the desktop helper when y
 .\scripts\install-desktop-runner.ps1
 ```
 
-After installation, use **Playwright ile Doldur** in the dashboard's **Applications** tab. It starts a local Chromium session, fills only verified profile answers and available documents, then leaves the browser open. Complete CAPTCHA, sign-in/MFA, and any unanswered questions yourself, then review and submit in that same visible browser window.
+After installation, use **Fill with Playwright** in the dashboard's **Applications** tab. It starts a local Chromium session, fills only verified profile answers and available documents, then leaves the browser open. Complete CAPTCHA, sign-in/MFA, and any unanswered questions yourself, then review and submit in that same visible browser window.
 
 ## Gemini Configuration
 
@@ -112,6 +167,7 @@ The numeric match score and qualification are always deterministic and based onl
 ## Remaining Risks / Known Limitations
 
 - The browser-agent's Playwright logic lives in one `worker.py` module; splitting it into a formal `BrowserAutomationEngine` core plus per-site `SiteAdapter` classes (as described in the master build prompt) would improve testability and make adding new ATS targets safer.
-- No local mock/fixture HTML application forms exist yet for repeatable browser regression tests; current browser-agent runs exercise real public job boards in `PREPARE_APPLICATION` mode (fill-only, never submits).
+- `tests/fixtures/application_form.html` covers form parsing, safe-answer resolution, and fill-without-submit locally; live browser-agent runs still exercise real public job boards in `PREPARE_APPLICATION` mode (fill-only, never submits).
 - `BROWSER_HEADLESS` must stay `true` in Docker (no X server in the containers); this is now the default in `.env`/`.env.example`.
 - Additional ATS *submission* adapters (Greenhouse/Lever/Ashby/SmartRecruiters-specific form flows) are not yet implemented; only discovery-side connectors exist for those sources.
+- Matching is keyword-taxonomy based: mandatory requirements outside the taxonomy, non-German/English language requirements, and junior titles are only weakly penalized (pinned by `evals/matching_cases.json` notes).
