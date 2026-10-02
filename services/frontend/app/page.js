@@ -261,8 +261,8 @@ function ApplicationsTab({ applications, error, loading, refresh, onSubmit, subm
               <td><StatusPill status={a.status} /></td>
               <td>{a.automation_mode}</td>
               <td>{a.attempts}</td>
-              <td>{a.blocked_reason || "-"}</td>
-              <td>{a.failure_reason || "-"}</td>
+              <td title={a.blocked_reason || ""}>{a.blocked_reason || "-"}</td>
+              <td title={a.failure_reason || ""}>{a.failure_reason || "-"}</td>
               <td>{formatDate(a.created_at)}</td>
               <td className="application-actions">
                 <a
@@ -312,23 +312,30 @@ function DocumentsTab({ documents, error, loading, refresh }) {
       <table>
         <thead>
           <tr>
-            <th>Type</th>
+            <th>Document</th>
             <th>Job</th>
             <th>Language</th>
             <th>Version</th>
             <th>Created</th>
-            <th>Artifact Path</th>
+            <th>Open</th>
           </tr>
         </thead>
         <tbody>
           {(documents || []).map((document) => (
             <tr key={document.id}>
-              <td>{document.type === "cover_letter" ? "Cover Letter" : "CV"}</td>
+              <td>{document.metadata?.filename || `${document.type === "cover_letter" ? "Cover Letter" : "CV"} (${document.language.toUpperCase()} v${document.version})`}</td>
               <td>{document.metadata?.company || document.job_id.slice(0, 8)}</td>
               <td>{document.language.toUpperCase()}</td>
               <td>{document.version}</td>
               <td>{formatDate(document.created_at)}</td>
-              <td><code className="artifact-path">{document.artifact_relative_path || "-"}</code></td>
+              <td className="document-actions">
+                <a className="link" href={document.download_url} target="_blank" rel="noreferrer">
+                  Open
+                </a>
+                <a className="link" href={document.download_url} download>
+                  Download
+                </a>
+              </td>
             </tr>
           ))}
           {(!documents || documents.length === 0) && (

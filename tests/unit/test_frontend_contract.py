@@ -61,3 +61,19 @@ def test_health_check_rewrite_preserved():
         "the /health-check rewrite to the API /health endpoint must be preserved"
     )
     assert "API_INTERNAL_URL" in config
+
+
+def test_documents_use_safe_download_not_raw_paths():
+    src = PAGE.read_text(encoding="utf-8")
+    assert "Artifact Path" not in src, "raw internal paths must not be the primary UI"
+    assert src.count("Download") >= 1 and ">Open<" in src.replace("\n", ""), (
+        "documents need visible Open/Download actions"
+    )
+    assert "document.download_url" in src, "artifact access must use the safe API download URL"
+
+
+def test_download_endpoint_streams_safely():
+    api = API.read_text(encoding="utf-8")
+    assert '"/api/v1/documents/{document_id}/download"' in api
+    assert "StreamingResponse" in api and "attachment;" in api
+    assert "Document not found" in api  # 404 for unknown ids, no arbitrary object access

@@ -2,6 +2,7 @@ import hashlib
 import io
 import logging
 import re
+from datetime import date
 from html import escape
 from pathlib import Path
 from typing import Dict, List
@@ -165,30 +166,47 @@ class DocumentGenerator:
             ),
         }
 
+    def _contact_parts(self, profile: CanonicalProfile) -> List[str]:
+        """Contact line built only from verified, non-empty profile facts."""
+        location = profile.facts.get("location", {}) or {}
+        city_country = ", ".join(
+            part for part in (location.get("city"), location.get("country")) if part
+        )
+        # NOTE: profile.phone falls back to a dummy placeholder when unset;
+        # only use the raw fact so generated documents never print it.
+        parts = [profile.email, profile.facts.get("phone"), profile.website, city_country]
+        return [part for part in parts if part and part.strip()]
+
+    def _profile_summary(self, profile, language: str, focus: str) -> str:
+        """Professional third-person summary grounded only in verified facts."""
+        positioning = ", ".join(profile.preferences.get("preferred_roles", [])[:3])
+        languages = ", ".join(f"{key} ({value})" for key, value in profile.languages.items())
+        if language == "de":
+            return (
+                f"{positioning} mit {profile.experience_years} Jahren Berufserfahrung. "
+                f"Schwerpunkte für diese Rolle: {focus}. Sprachen: {languages}."
+            )
+        return (
+            f"{positioning} with {profile.experience_years} years of professional experience. "
+            f"Focus areas for this role: {focus}. Languages: {languages}."
+        )
+
     def _build_pdf_cv(self, profile, company, title, language, tailoring) -> bytes:
         buffer = io.BytesIO()
         document = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=40, rightMargin=40, topMargin=36, bottomMargin=36)
         styles = self._base_styles()
         skills = tailoring["skills"]
         focus = ", ".join(tailoring["keywords"]) or "the role requirements"
-        summary = (
-            f"Targeted for {escape(title)} at {escape(company)}. This CV prioritizes the candidate's "
-            f"verified experience of {profile.experience_years} years and verified skills relevant to {escape(focus)}."
-        )
-        if language == "de":
-            summary = (
-                f"Zielgerichtete Bewerbung für {escape(title)} bei {escape(company)}. Dieser Lebenslauf priorisiert "
-                f"die verifizierte Erfahrung von {profile.experience_years} Jahren und relevante, verifizierte Kenntnisse."
-            )
+        summary = self._profile_summary(profile, language, focus)
+        contact = " &nbsp;|&nbsp; ".join(escape(part) for part in self._contact_parts(profile))
         elements = [
             Paragraph(escape(profile.name), styles["title"]),
             Paragraph(
-                f"<b>Target role:</b> {escape(title)} &nbsp; | &nbsp; "
-                f"{escape(profile.email)} &nbsp; | &nbsp; {escape(profile.website)}",
+                f"<b>{escape(title)} - {escape(company)}</b><br/>{contact}",
                 styles["subtitle"],
             ),
             Paragraph("Profile Summary" if language == "en" else "Profilzusammenfassung", styles["heading"]),
-            Paragraph(summary, styles["body"]),
+            Paragraph(escape(summary), styles["body"]),
             Paragraph("Role-Relevant Verified Skills" if language == "en" else "Rollenrelevante verifizierte Kenntnisse", styles["heading"]),
             Paragraph(" &bull; ".join(escape(skill) for skill in skills), styles["body"]),
             Paragraph("Candidate Profile" if language == "en" else "Kandidatenprofil", styles["heading"]),
@@ -201,7 +219,7 @@ class DocumentGenerator:
             Paragraph(" &bull; ".join(escape(skill) for skill in profile.skills if skill not in skills), styles["body"]),
             Paragraph("Education & Certifications" if language == "en" else "Ausbildung & Zertifizierungen", styles["heading"]),
             Paragraph(
-                f"Education: {escape('; '.join(item.get('degree', '') + ' — ' + item.get('institution', '') for item in profile.education))}<br/>"
+                f"Education: {escape('; '.join(item.get('degree', '') + ' - ' + item.get('institution', '') for item in profile.education))}<br/>"
                 f"Certifications: {escape(' • '.join(profile.certifications))}",
                 styles["body"],
             ),
@@ -215,13 +233,11 @@ class DocumentGenerator:
         document = docx.Document()
         document.add_heading(profile.name, level=0)
         contact = document.add_paragraph()
-        contact.add_run(f"Target role: {title} at {company}\n").bold = True
-        contact.add_run(f"{profile.email} | {profile.website}")
+        contact.add_run(f"{title} at {company}\n").bold = True
+        contact.add_run(" | ".join(self._contact_parts(profile)))
+        focus = ", ".join(tailoring["keywords"]) or "the role requirements"
         document.add_heading("Profile Summary" if language == "en" else "Profilzusammenfassung", level=1)
-        document.add_paragraph(
-            f"This version is tailored for {title} at {company}. It prioritizes verified profile facts "
-            f"and {profile.experience_years} years of professional experience."
-        )
+        document.add_paragraph(self._profile_summary(profile, language, focus))
         document.add_heading("Role-Relevant Verified Skills" if language == "en" else "Rollenrelevante verifizierte Kenntnisse", level=1)
         document.add_paragraph(" • ".join(tailoring["skills"]))
         document.add_heading("Candidate Positioning" if language == "en" else "Kandidatenpositionierung", level=1)
@@ -245,28 +261,47 @@ class DocumentGenerator:
         buffer = io.BytesIO()
         document = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=45, rightMargin=45, topMargin=45, bottomMargin=45)
         styles = self._base_styles()
-        selected_skills = ", ".join(escape(skill) for skill in tailoring["skills"][:6])
+        top_skills = [escape(skill) for skill in tailoring["skills"][:3]]
+        focus = ", ".join(tailoring["keywords"]) or ("the advertised focus areas" if language == "en" else "die ausgeschriebenen Schwerpunkte")
+        location = profile.facts.get("location", {}) or {}
+        city = location.get("city", "")
+        today = date.today().strftime("%B %d, %Y" if language == "en" else "%d.%m.%Y")
+        place_date = f"{city}, {today}" if city else today
+        contact = " &bull; ".join(escape(part) for part in self._contact_parts(profile))
         if language == "de":
             paragraphs = [
                 f"Sehr geehrtes Recruiting-Team bei {escape(company)},",
-                f"ich bewerbe mich für die Position <b>{escape(title)}</b>. Mein Profil enthält {profile.experience_years} Jahre Berufserfahrung sowie verifizierte Kenntnisse, die für diese Rolle priorisiert wurden.",
-                f"Für diese Bewerbung hervorgehoben: <b>{selected_skills}</b>. Diese Angaben stammen ausschließlich aus meinem Kandidatenprofil.",
-                "Ich freue mich über die Gelegenheit, die Anforderungen der Position und meinen möglichen Beitrag in einem Gespräch zu erläutern.",
+                f"mit {profile.experience_years} Jahren Berufserfahrung als {top_skills[0] if top_skills else 'Fachkraft'} "
+                f"bewerbe ich mich für die Position <b>{escape(title)}</b>. Besonders relevant sind meine "
+                f"verifizierten Kenntnisse in {', '.join(f'<b>{skill}</b>' for skill in top_skills)}.",
+                f"Die Ausschreibung betont {escape(focus)}. Diese Schwerpunkte decken sich mit meiner dokumentierten "
+                "Tätigkeit; alle Angaben in dieser Bewerbung stammen ausschließlich aus meinem Kandidatenprofil.",
+                "Gerne erläutere ich in einem Gespräch, wie meine Erfahrung zu den Anforderungen der Position passt.",
                 f"Mit freundlichen Grüßen,<br/>{escape(profile.name)}",
             ]
         else:
+            connections = (
+                f"My verified background covers {', '.join(f'<b>{skill}</b>' for skill in top_skills)} "
+                f"across {profile.experience_years} years of professional experience, "
+                f"directly matching the role's emphasis on {escape(focus)}."
+                if top_skills else
+                f"My {profile.experience_years} years of professional experience "
+                f"match the role's emphasis on {escape(focus)}."
+            )
             paragraphs = [
                 f"Dear Hiring Team at {escape(company)},",
-                f"I am applying for the <b>{escape(title)}</b> position. My profile contains {profile.experience_years} years of professional experience and verified skills selected specifically for this role.",
-                f"For this application, I have highlighted: <b>{selected_skills}</b>. These statements are limited to facts in my candidate profile.",
-                "I would welcome the opportunity to discuss the role's requirements and how my verified background may be relevant.",
+                f"I am applying for the <b>{escape(title)}</b> position.",
+                connections + " Every statement in this application is limited to verified facts in my candidate profile.",
+                "I would welcome the opportunity to discuss how this background fits your requirements.",
                 f"Sincerely,<br/>{escape(profile.name)}",
             ]
         elements = [
             Paragraph(escape(profile.name), styles["title"]),
-            Paragraph(f"{escape(profile.email)} &bull; {escape(profile.website)}", styles["subtitle"]),
-            Spacer(1, 16),
-            Paragraph(f"<b>Application: {escape(title)} — {escape(company)}</b>", styles["body"]),
+            Paragraph(contact, styles["subtitle"]),
+            Spacer(1, 10),
+            Paragraph(escape(place_date), styles["body"]),
+            Spacer(1, 6),
+            Paragraph(f"<b>Application: {escape(title)} - {escape(company)}</b>", styles["body"]),
             Spacer(1, 10),
             *(Paragraph(paragraph, styles["body"]) for paragraph in paragraphs),
         ]
