@@ -1,18 +1,45 @@
-You are working inside the existing LOCAL repository:
+You are working inside the EXISTING LOCAL repository:
 
 careerflow-agent
 
-This is a STABILIZATION PATCH.
+This is NOT a greenfield implementation.
 
-The previous work added evaluation tests, browser regression tests, CI and English UI.
+The application already contains:
 
-Now the priority is different:
+* Next.js frontend
+* API service
+* job discovery
+* deterministic job matching
+* LLM-assisted explanations
+* CV/document generation
+* application analysis
+* Playwright browser automation
+* PostgreSQL
+* Redis
+* MinIO
+* orchestrator/pipeline
+* Docker Compose
 
-> Verify that the application actually works end-to-end locally, identify UI elements that are hidden/cut off/broken, identify service integration problems, and fix them with the smallest possible changes.
+The previous changes introduced evaluation/testing/CI work and English UI.
 
-The user will review and commit the changes manually.
+The current application now has quality problems.
 
-## ABSOLUTE GIT RULE
+The user specifically reports:
+
+1. The Applications tab has become visually smaller / worse.
+2. Some buttons/actions are not visible or do not fit.
+3. The Documents tab displays `Artifact Path` as plain text instead of a useful clickable document link.
+4. Generated documents are extremely basic and visually poor.
+5. There may be service/API integration problems.
+6. The UI needs a complete practical review rather than another isolated CSS fix.
+
+Your task is to perform a REAL LOCAL CODE REVIEW first, then implement a focused stabilization/product-quality patch.
+
+---
+
+# ABSOLUTE GIT RULE
+
+The user will commit manually.
 
 DO NOT:
 
@@ -24,472 +51,958 @@ DO NOT:
 * rewrite history
 * create branches
 
-Only use read-only git commands such as:
+You may use:
 
 git status
+git log
 git diff
 git diff --stat
-git log
 
-All modifications must remain UNCOMMITTED in the local working tree.
+All changes must remain uncommitted in the local working tree.
 
 ---
 
-# PHASE 1 — UNDERSTAND THE CURRENT STATE
+# PART 1 — FULL REPOSITORY DISCOVERY
 
-Before changing anything, inspect:
+Before modifying anything, inspect the repository thoroughly.
 
-* repository structure
-* README
-* docker-compose files
+Do NOT guess filenames.
+
+First discover the actual structure.
+
+Inspect:
+
+* frontend/
+* services/
+* shared/
+* db/
+* tests/
+* scripts/
+* docker-compose.yml
+* README.md
+* architecture.md
+* data-model.md
+* implementation-plan.md
+* SPEC.md
+
+Also inspect package/dependency files:
+
+* package.json
+* pyproject.toml
+* requirements files
 * Dockerfiles
-* backend services
-* frontend
-* API routes
-* frontend API clients
-* environment configuration
-* service-to-service URLs
-* health checks
-* existing tests
-* previous evaluation tests
-* browser regression tests
-* CI workflow
+* tsconfig
+* Next.js configuration
+* Tailwind/config files if present
 
-Also inspect the current git status.
+Find the ACTUAL files implementing:
 
-Do NOT immediately start editing.
+## Frontend
 
-First build a mental map of:
+* application dashboard
+* Applications tab/page
+* Documents tab/page
+* document/artifact list
+* job cards
+* application cards
+* navigation/sidebar
+* header
+* buttons/actions
+* modals/dialogs
+* responsive layout
+* API client/hooks
 
-Frontend
-↓
-API / Gateway
-↓
-Backend services
-↓
-Database / external dependencies
+## Backend
 
-Identify every service defined by Docker Compose and what depends on what.
+Find actual implementations for:
 
----
+* applications API
+* documents/artifacts API
+* MinIO storage
+* document generation
+* CV generation
+* cover-letter generation
+* application analysis
+* browser automation
+* service-to-service communication
 
-# PHASE 2 — ACTUALLY RUN THE APPLICATION
+Do not invent paths.
 
-Do not rely only on source-code inspection.
+At the beginning of the work, produce an internal map like:
 
-Start the application using the repository's documented local development procedure.
+Frontend: <actual file paths>
 
-Use the existing commands from README/package files/docker-compose.
+Applications: <actual file paths>
 
-If Docker Compose is the intended development environment, use it.
+Documents: <actual file paths>
 
-Verify:
+Document generation: <actual file paths>
 
-* containers start
-* containers remain running
-* health checks work
-* frontend is reachable
-* backend/API is reachable
-* services can communicate
-* database connection works if applicable
+Artifact storage: <actual file paths>
 
-Inspect logs for:
+API: <actual file paths>
 
-* connection refused
-* wrong hostname
-* wrong port
-* missing environment variable
-* CORS
-* 404
-* 401/403
-* 500
-* timeout
-* startup race conditions
-* frontend API URL errors
-
-Do not hide errors just to make the application appear healthy.
+Do not create a new architecture document just for this task unless absolutely necessary.
 
 ---
 
-# PHASE 3 — FRONTEND VISUAL / LAYOUT AUDIT
+# PART 2 — RUN THE CURRENT APPLICATION BEFORE CHANGING IT
 
-This is a HIGH PRIORITY task.
+This is mandatory.
 
-Use the existing browser tooling if available.
+Use the repository's documented startup process.
 
-Open the actual frontend locally.
+Prefer:
 
-Inspect the main screens at:
+docker compose up --build
 
-1. desktop ~1440x900
-2. laptop ~1280x800
-3. smaller desktop ~1024x768
-4. mobile/tablet width if the application claims responsive support
+if that is the intended development workflow.
 
-Look specifically for:
+Check:
 
-* buttons not visible
-* buttons clipped
-* buttons outside viewport
-* text overflowing
-* cards wider than viewport
-* horizontal scrolling
-* sidebar covering content
-* header covering content
-* fixed elements overlapping content
-* modals extending outside viewport
-* tables wider than screen
-* action buttons hidden below fold
-* navigation items disappearing
-* icons without usable labels
-* insufficient spacing
-* unreadable text
-* disabled buttons that look active
-* loading states that never finish
-* empty states
-* error states
-* inconsistent English labels
+* all containers start
+* no restart loops
+* API responds
+* frontend responds
+* PostgreSQL works
+* Redis works
+* MinIO works
+* service-to-service communication works
 
-Do NOT redesign the UI.
-
-Fix only actual usability/layout problems.
-
----
-
-# PHASE 4 — CHECK EVERY IMPORTANT BUTTON
-
-Create a practical UI checklist from the existing application.
-
-For each important visible action, verify:
-
-Button/action
-↓
-frontend handler
-↓
-API request
-↓
-backend route
-↓
-service
-↓
-response
-↓
-frontend state update
-
-Pay particular attention to:
-
-* Search Jobs
-* Run Matching
-* Generate CV
-* Analyze Job
-* Open Job
-* Application
-* Browser automation
-* Profile
-* Settings
-* Refresh
-* Retry
-* navigation items
-
-Do not assume that because a button renders, it works.
-
-For every broken action:
-
-1. Find the root cause.
-2. Fix the smallest possible layer.
-3. Retest.
-
----
-
-# PHASE 5 — SERVICE INTEGRATION AUDIT
-
-Check service communication carefully.
-
-For each service determine:
-
-* port
-* hostname
-* health endpoint
-* dependencies
-* environment variables
-* internal URL
-* frontend/public URL where applicable
-
-Look for common Docker mistakes:
-
-BAD:
-
-http://localhost:8000
-
-when one container needs to call another container.
-
-Use the appropriate Docker service hostname instead.
-
-Also check:
-
-* port collisions
-* startup ordering
-* health checks
-* incorrect container names
-* incorrect API prefixes
-* CORS configuration
-* frontend environment variables
-* backend environment variables
-* database connection strings
-* missing dependencies
-* stale environment variable names
-
-Do not change architecture.
-
-Only fix incorrect configuration or broken integration.
-
----
-
-# PHASE 6 — API CONTRACT CHECK
-
-Compare:
-
-frontend API calls
-
-against:
-
-actual backend routes.
+Inspect logs.
 
 Look for:
 
-* wrong paths
-* wrong HTTP methods
-* wrong request body
-* wrong field names
-* wrong response fields
-* incorrect status handling
-* incorrect error handling
-* stale API endpoints
-* frontend expecting fields that backend no longer returns
+* connection refused
+* incorrect Docker hostname
+* incorrect ports
+* 404
+* 401
+* 403
+* 422
+* 500
+* timeout
+* CORS
+* missing environment variables
+* startup race conditions
+* failed migrations
+* MinIO errors
+* Redis errors
 
-If a frontend call is broken, fix the smallest side necessary.
-
-Do not introduce a new API abstraction unless the existing code genuinely requires it.
-
----
-
-# PHASE 7 — LOADING / ERROR STATES
-
-Inspect every major async operation.
-
-A user should never see:
-
-* permanently spinning loader
-* blank screen
-* invisible error
-* button doing nothing
-* duplicate requests caused by repeated clicks
-
-Where appropriate add:
-
-* loading state
-* disabled state during request
-* visible error message
-* retry action
-* empty state
-
-Keep implementation simple.
+Do not fix UI problems while ignoring broken backend services.
 
 ---
 
-# PHASE 8 — RESPONSIVE LAYOUT FIXES
+# PART 3 — REAL FRONTEND AUDIT
 
-If elements do not fit the viewport, fix the actual CSS/layout issue.
+Open the actual frontend in a browser.
 
-Prefer existing layout system/components.
+Do not rely only on source-code inspection.
 
-Typical acceptable fixes:
+Test at least:
 
-* flex-wrap
-* grid minmax()
-* overflow-x:auto where appropriate
+1440x900
+1280x800
+1024x768
+
+If practical also check:
+
+390x844
+
+The application is a portfolio project.
+
+The UI must look like a real usable professional dashboard.
+
+Audit:
+
+* Overview
+* Jobs
+* Applications
+* Documents
+* Events
+* Settings
+
+If a Documents tab does not exist as a dedicated route/tab, locate where generated artifacts are displayed.
+
+---
+
+# PART 4 — APPLICATIONS TAB
+
+This is HIGH PRIORITY.
+
+The user reports that the Applications tab became smaller/worse after previous changes.
+
+Find the ROOT CAUSE.
+
+Inspect:
+
+* page/container width
+* sidebar width
+* main content width
+* card width
+* table width
+* grid columns
+* flex layout
 * max-width
-* min-width:0
+* min-width
+* padding
 * responsive breakpoints
-* button wrapping
-* responsive padding
-* sidebar collapse
-* table horizontal scrolling
+* action button layout
 
-Avoid arbitrary pixel hacks.
+Do not simply increase the entire application width blindly.
 
-Do not redesign the entire component hierarchy.
+The intended desktop layout should use the available viewport effectively.
 
----
+A reasonable target is:
 
-# PHASE 9 — REGRESSION TESTS
+Sidebar:
+fixed but compact
 
-For every bug you fix that can reasonably be tested:
+Main:
+flex: 1
+min-width: 0
+width: 100%
 
-add or update a regression test.
+Content:
+max-width only where it improves readability
 
-Prioritize:
+Application list:
+use available horizontal space
 
-* previously invisible buttons
-* broken API calls
-* broken service URLs
-* frontend/backend contract mismatches
-* browser automation flow
-* critical navigation
+Application card/table:
+actions remain visible
 
-Use the existing testing infrastructure.
+If the application list is card-based, cards should not become unnecessarily narrow.
 
-Do not create a huge E2E framework.
+If table-based, use horizontal scrolling only when truly necessary.
 
----
+Action buttons must remain visible.
 
-# PHASE 10 — FULL LOCAL VALIDATION
+If there are several actions, use:
 
-After fixes, run:
+display:flex;
+flex-wrap:wrap;
+gap:...
 
-1. backend tests
-2. matching evaluation
-3. browser regression tests
-4. frontend lint
-5. frontend build
-6. relevant integration tests
-7. Docker Compose validation
-8. local application smoke test
+instead of fixed widths that cause clipping.
 
-Then actually open the frontend again.
-
-Verify visually that:
-
-* buttons fit
-* content is not clipped
-* navigation works
-* main actions are visible
-* API-backed pages load
-* errors are visible when appropriate
-* no obvious console errors remain
-
-If browser automation is available, check browser console errors and failed network requests.
+DO NOT introduce arbitrary large fixed widths.
 
 ---
 
-# IMPORTANT SCOPE CONTROL
+# PART 5 — APPLICATION ACTIONS
 
-Do NOT:
+Inspect every application action.
 
-* redesign the application
-* replace the frontend framework
-* replace the backend framework
-* rewrite services
+Examples may include:
+
+* Open Job
+* View Details
+* Generate CV
+* Generate Cover Letter
+* Analyze
+* Browser Fill
+* Open in Browser
+* Submit
+* Retry
+* Refresh
+* Delete
+
+Use the ACTUAL actions found in the code.
+
+For every action verify:
+
+UI button
+→ frontend handler
+→ API call
+→ backend route
+→ service
+→ database/storage
+→ response
+→ UI state update
+
+If a button exists but does nothing:
+
+find the actual cause.
+
+Do not hide the button.
+
+Do not remove functionality merely because it is currently broken.
+
+---
+
+# PART 6 — DOCUMENTS / ARTIFACT PATH
+
+This is explicitly required.
+
+Find the actual frontend component that displays:
+
+`Artifact Path`
+
+and find the backend/API response that provides that value.
+
+Currently it appears to expose a filesystem/object-storage path as plain text.
+
+That is NOT acceptable as the primary user experience.
+
+Determine how artifacts are stored.
+
+The repository documentation states that MinIO is the document/artifact store.
+
+Inspect the existing artifact storage implementation.
+
+DO NOT expose:
+
+* MinIO internal filesystem paths
+* server filesystem paths
+* private bucket paths
+* credentials
+* internal Docker paths
+
+Instead implement a proper user-facing document access mechanism.
+
+Preferred architecture:
+
+Frontend:
+Artifact name / document type
++
+"Open"
++
+"Download"
+
+Backend:
+provide a safe artifact access endpoint or presigned URL mechanism using the existing MinIO integration.
+
+The endpoint must:
+
+1. verify the artifact exists
+2. prevent arbitrary object access
+3. use the existing application/storage ownership model
+4. return a browser-accessible response or safe temporary URL
+5. preserve the original filename/content type where possible
+
+If the existing API already has a secure artifact endpoint, USE IT.
+
+Do not create a duplicate storage system.
+
+For the frontend, replace raw:
+
+Artifact Path:
+/some/internal/path/...
+
+with something like:
+
+Document
+resume.pdf
+
+[Open] [Download]
+
+or:
+
+CV — Senior DevOps Engineer
+[View] [Download]
+
+The raw internal artifact path should not be the main displayed value.
+
+You may retain it only as developer/debug metadata if genuinely useful.
+
+---
+
+# PART 7 — DOCUMENT GENERATION QUALITY
+
+This is another HIGH PRIORITY problem.
+
+Inspect the complete document-generation pipeline.
+
+Trace:
+
+job
+→ candidate profile
+→ matching
+→ prompt
+→ generated content
+→ document renderer
+→ artifact storage
+→ frontend display
+
+Identify exactly what currently generates:
+
+* CV
+* cover letter
+* other documents
+
+Determine whether the output is:
+
+* plain text
+* markdown
+* HTML
+* DOCX
+* PDF
+* template-based
+* LLM-generated
+* minimally formatted
+
+Do not replace the entire document system blindly.
+
+The objective is to produce documents that are genuinely portfolio/demo quality.
+
+---
+
+# PART 8 — CV QUALITY
+
+The generated CV must not look like raw generated text.
+
+Inspect the existing master CV/profile structure.
+
+Preserve factual information from the candidate profile.
+
+The generated CV should have a professional hierarchy such as:
+
+Header
+Name
+Role / professional title
+Contact information
+
+Professional Summary
+
+Core Skills
+
+Professional Experience
+
+Education
+
+Certifications
+
+Languages
+
+Projects / Additional Information where appropriate
+
+The exact sections must follow the actual profile data.
+
+Do NOT invent:
+
+* employers
+* dates
+* technologies
+* qualifications
+* metrics
+* achievements
+
+The LLM may tailor wording to the job but must remain grounded in verified profile data.
+
+---
+
+# PART 9 — COVER LETTER QUALITY
+
+Cover letters should be actual professional documents, not a few generic sentences.
+
+Use:
+
+* candidate profile
+* target job
+* company name
+* job title
+* relevant experience
+* relevant skills
+
+Structure approximately:
+
+Greeting
+
+Opening:
+specific interest in role/company
+
+Relevant experience:
+2–3 concrete connections between candidate and job
+
+Value:
+why the candidate's experience is relevant
+
+Closing:
+professional call to action
+
+Signature
+
+Avoid:
+
+* generic AI filler
+* exaggerated claims
+* fabricated achievements
+* repetitive wording
+* "I am excited to apply..." repeated in every document
+
+The LLM should tailor the document to the job while remaining factual.
+
+---
+
+# PART 10 — DOCUMENT RENDERING
+
+Inspect the existing renderer.
+
+If the project already generates PDF/DOCX:
+
+IMPROVE the existing renderer.
+
+Do NOT introduce a second document-generation framework unless the existing implementation cannot produce usable documents.
+
+The rendered result should have:
+
+* consistent typography
+* headings
+* spacing
+* readable margins
+* page breaks
+* bullet lists
+* proper date formatting
+* consistent alignment
+* professional hierarchy
+
+Avoid:
+
+* giant empty spaces
+* text touching page edges
+* orphan headings
+* broken bullets
+* raw Markdown syntax
+* raw JSON
+* raw prompt output
+* excessive decorative elements
+
+If HTML → PDF is already used, improve the HTML/CSS template.
+
+If DOCX is used, improve its existing styles.
+
+If Markdown is used only as an intermediate representation, ensure the final artifact is properly rendered.
+
+---
+
+# PART 11 — DOCUMENT PREVIEW
+
+Inspect how documents are displayed in the UI.
+
+If the current UI only shows:
+
+filename
+artifact path
+timestamp
+
+then improve it.
+
+The user should be able to understand:
+
+Document type
+Target job
+Created date
+Status
+File type
+
+and access it directly.
+
+Prefer:
+
+[View] [Download]
+
+If a preview is technically easy using the existing infrastructure, provide it.
+
+Do NOT build a complex document editor.
+
+---
+
+# PART 12 — API / SERVICE CONTRACT REVIEW
+
+Trace the frontend requests for:
+
+Applications
+Documents
+Jobs
+Matching
+Events
+
+against the actual backend routes.
+
+Find mismatches such as:
+
+frontend:
+GET /api/...
+
+backend:
+GET /api/v1/...
+
+or:
+
+frontend expects:
+artifact_url
+
+backend returns:
+artifact_path
+
+Fix the actual contract.
+
+Do not add duplicate endpoints if an existing endpoint can be corrected.
+
+Check:
+
+* HTTP methods
+* route prefixes
+* request bodies
+* response schemas
+* field names
+* error handling
+* status codes
+
+---
+
+# PART 13 — SERVICE HEALTH
+
+Review Docker Compose and service dependencies.
+
+For every service verify:
+
+* container name
+* port
+* environment variables
+* dependency
+* health check
+* internal hostname
+* API endpoint
+
+Remember:
+
+inside Docker:
+
+localhost != another container
+
+Services should communicate using Docker service names.
+
+Do not introduce a service-discovery system.
+
+---
+
+# PART 14 — FRONTEND STATE / LOADING / ERRORS
+
+Inspect every major API-backed page.
+
+Avoid:
+
+* blank screens
+* buttons doing nothing
+* permanent spinners
+* stale data after mutation
+* duplicate requests
+* silent errors
+
+For important operations:
+
+loading
+→ request
+→ success state
+
+or:
+
+loading
+→ request
+→ visible error + retry
+
+Use the existing frontend state management.
+
+Do not introduce Redux/Zustand/etc. unless the project already uses it and actually requires a correction.
+
+---
+
+# PART 15 — RESPONSIVE DESIGN
+
+Fix the actual layout problems.
+
+Use the project's existing CSS/Tailwind/component system.
+
+Prefer:
+
+flex-wrap
+grid
+minmax()
+min-width: 0
+responsive breakpoints
+overflow-x:auto for tables
+responsive padding
+
+Avoid:
+
+* giant fixed widths
+* negative margins
+* arbitrary transforms
+* absolute positioning used to patch layout
+* hiding important buttons on smaller screens
+
+The application must remain usable at:
+
+1440x900
+1280x800
+1024x768
+
+---
+
+# PART 16 — DESIGN CONSISTENCY
+
+Perform a visual consistency review.
+
+Check:
+
+* typography
+* button sizes
+* border radius
+* spacing
+* cards
+* tables
+* badges
+* status colors
+* icons
+* empty states
+* loading states
+* error states
+
+Do NOT perform a full visual redesign.
+
+Keep the existing design language.
+
+The goal is:
+
+clean
+consistent
+professional
+functional
+
+---
+
+# PART 17 — TESTS FOR THE ACTUAL BUGS
+
+Add regression coverage for the bugs discovered.
+
+At minimum cover:
+
+## Applications
+
+* page renders
+* applications use available content width
+* primary actions are visible
+* action buttons do not overflow
+
+## Documents
+
+* artifact metadata renders
+* raw internal path is not the primary UI
+* Open/Download action exists
+* artifact access uses the safe API mechanism
+
+## Services
+
+* applications endpoint works
+* documents/artifacts endpoint works
+* health endpoint works
+
+## Document generation
+
+* CV generation produces non-empty meaningful content
+* cover letter generation produces non-empty meaningful content
+* generated artifact is stored successfully
+
+Use existing test infrastructure.
+
+Do not create a giant new testing framework.
+
+---
+
+# PART 18 — MANUAL BROWSER ACCEPTANCE TEST
+
+After coding, actually open the application.
+
+Test this sequence:
+
+1. Open dashboard.
+2. Open Jobs.
+3. Open an existing job.
+4. Trigger matching if available.
+5. Generate a CV.
+6. Generate a cover letter.
+7. Open Applications.
+8. Inspect application card/table width.
+9. Click relevant application action.
+10. Open Documents.
+11. Confirm generated document is visible.
+12. Confirm Artifact Path is no longer just raw text.
+13. Click Open/View.
+14. Click Download if available.
+15. Verify the document is actually accessible.
+16. Inspect the generated document visually.
+
+If document generation is slow, wait for completion instead of declaring failure prematurely.
+
+---
+
+# PART 19 — DOCUMENT QUALITY ACCEPTANCE
+
+Inspect an actual generated CV and cover letter.
+
+Do not merely check HTTP 200.
+
+The document must be:
+
+* readable
+* structured
+* professional
+* factually grounded
+* properly formatted
+* usable as an application document
+
+If the generated document is still obviously poor, continue fixing the actual generation/template pipeline.
+
+---
+
+# PART 20 — DO NOT OVERENGINEER
+
+Absolutely do NOT:
+
+* rewrite the architecture
 * merge services
 * split services
-* add Kubernetes
-* add Redis just because it might help
-* add Kafka
-* add another database
-* add another LLM
-* add RAG
-* add observability stack
-* add authentication unless something is actually broken because of it
-* add unnecessary dependencies
+* introduce Kubernetes
+* introduce Kafka
+* introduce another database
+* introduce another LLM
+* introduce RAG
+* introduce another frontend framework
+* build a new design system
+* build a full document editor
+* implement enterprise authentication
+* implement production observability
 
-This is a PATCH, not a rewrite.
-
----
-
-# PRIORITY ORDER
-
-If you discover many problems, fix them in this order:
-
-P0 — Application cannot start
-P1 — Frontend cannot communicate with backend
-P2 — Main functionality is broken
-P3 — Important buttons/actions invisible or unusable
-P4 — Layout/responsive problems
-P5 — Loading/error-state problems
-P6 — Minor visual polish
-
-Do not spend time on P6 while P0–P3 remain.
+This is a stabilization/product-quality patch.
 
 ---
 
-# IF SOMETHING IS ALREADY WORKING
+# PART 21 — IMPLEMENTATION STYLE
 
-Leave it alone.
+IMPORTANT:
 
-Do not refactor code simply because you dislike its style.
+Do not make broad speculative changes.
 
-The objective is stability, not code beautification.
+For every bug:
+
+1. Identify root cause.
+2. Identify exact file.
+3. Identify exact function/component.
+4. Make the smallest correct change.
+5. Test it.
+6. Check for regressions.
+
+If a component is genuinely badly structured, refactor only that component.
+
+Do not perform unrelated cleanup.
 
 ---
 
-# FINAL REVIEW
+# PART 22 — FINAL CODE REVIEW
 
-Before finishing:
+Run:
 
 git status
 git diff --stat
 git diff
 
-Check for:
+Inspect all modifications.
 
-* accidental secrets
+Remove:
+
+* debug logging
+* temporary files
+* screenshots
+* generated artifacts
+* secrets
 * .env files
-* generated files
 * node_modules
 * build artifacts
-* temporary screenshots
-* debug code
-* console.log statements added only for debugging
-* accidental dependency changes
 
-Remove temporary debugging code.
+Do not commit.
 
 ---
 
 # FINAL REPORT
 
-Report:
+Return:
 
-## 1. Problems found
+## Repository map
 
-Group them:
+Actual files discovered for:
+
+* frontend
+* Applications
+* Documents
+* artifact storage
+* document generation
+* API
+* browser automation
+
+## Problems found
+
+Group:
 
 * UI
-* frontend/API
-* services/Docker
-* browser automation
+* Applications
+* Documents
+* document generation
+* API
+* services
 * tests
 
-## 2. Problems fixed
+## Root causes
 
-List exact fixes.
+For every important problem, state:
 
-## 3. Tests executed
+file
+component/function
+root cause
 
-Show exact commands and results.
+## Changes made
 
-## 4. Remaining problems
+State:
 
-Only genuine unresolved problems.
+file
+change
+reason
 
-## 5. Files changed
+## Tests executed
 
-List important files.
+Exact commands and results.
 
-## 6. Git
+## Manual browser verification
+
+State which viewport sizes were checked.
+
+## Document verification
+
+State which generated artifacts were inspected and whether they were actually accessible/rendered.
+
+## Remaining problems
+
+Only genuine unresolved issues.
+
+## Git
 
 Confirm:
 
-No commit was created.
-No push was performed.
-All changes remain local and uncommitted.
+No commit.
+No push.
+Changes remain local and uncommitted.
 
 IMPORTANT:
 
-Do not stop at static code analysis.
+Do not stop after static inspection.
 
-Actually run the application and inspect the frontend.
+Run the application.
 
-The user's main concern is that some buttons do not fit/appear and that some services may not work correctly.
+Inspect the actual UI.
 
-Find the actual causes and fix them.
+Trace the actual API calls.
+
+Inspect actual generated documents.
+
+Fix root causes rather than applying superficial CSS patches.

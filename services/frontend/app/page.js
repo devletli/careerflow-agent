@@ -123,7 +123,7 @@ function ActionPanel({ onRun, runningAction, actionMessage }) {
   );
 }
 
-function OverviewTab({ status, jobs, applications, events, onRun, runningAction, actionMessage }) {
+function OverviewTab({ status, jobs, applications, events, eventsLoading, onRun, runningAction, actionMessage }) {
   const jobCount = jobs?.length ?? 0;
   const appCount = applications?.length ?? 0;
   const submitted = (applications || []).filter((a) => a.status === "SUBMITTED").length;
@@ -173,17 +173,18 @@ function OverviewTab({ status, jobs, applications, events, onRun, runningAction,
       </div>
       <div className="panel" style={{ marginTop: 16 }}>
         <h3 style={{ marginTop: 0 }}>Latest Pipeline Events</h3>
-        <EventsTable events={(events || []).slice(0, 8)} />
+        <EventsTable events={(events || []).slice(0, 8)} loading={eventsLoading} />
       </div>
     </div>
   );
 }
 
-function JobsTab({ jobs, error, refresh }) {
+function JobsTab({ jobs, error, loading, refresh }) {
   return (
     <div className="panel">
       <Toolbar label="Discovered / matched jobs" onRefresh={refresh} count={jobs?.length} />
       {error && <div className="error-banner">{error}</div>}
+      <div className="table-scroll">
       <table>
         <thead>
           <tr>
@@ -223,21 +224,23 @@ function JobsTab({ jobs, error, refresh }) {
           {(!jobs || jobs.length === 0) && (
             <tr>
               <td colSpan={11} className="muted">
-                No jobs discovered yet.
+                {loading ? "Loading…" : "No jobs discovered yet."}
               </td>
             </tr>
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
 
-function ApplicationsTab({ applications, error, refresh, onSubmit, submittingApplicationId }) {
+function ApplicationsTab({ applications, error, loading, refresh, onSubmit, submittingApplicationId }) {
   return (
     <div className="panel">
       <Toolbar label="Application history" onRefresh={refresh} count={applications?.length} />
       {error && <div className="error-banner">{error}</div>}
+      <div className="table-scroll">
       <table>
         <thead>
           <tr>
@@ -289,21 +292,23 @@ function ApplicationsTab({ applications, error, refresh, onSubmit, submittingApp
           {(!applications || applications.length === 0) && (
             <tr>
               <td colSpan={8} className="muted">
-                No applications yet.
+                {loading ? "Loading…" : "No applications yet."}
               </td>
             </tr>
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
 
-function DocumentsTab({ documents, error, refresh }) {
+function DocumentsTab({ documents, error, loading, refresh }) {
   return (
     <div className="panel">
       <Toolbar label="Generated CVs and cover letters" onRefresh={refresh} count={documents?.length} />
       {error && <div className="error-banner">{error}</div>}
+      <div className="table-scroll">
       <table>
         <thead>
           <tr>
@@ -327,16 +332,18 @@ function DocumentsTab({ documents, error, refresh }) {
             </tr>
           ))}
           {(!documents || documents.length === 0) && (
-            <tr><td colSpan={6} className="muted">No documents generated yet.</td></tr>
+            <tr><td colSpan={6} className="muted">{loading ? "Loading…" : "No documents generated yet."}</td></tr>
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
 
-function EventsTable({ events }) {
+function EventsTable({ events, loading }) {
   return (
+    <div className="table-scroll">
     <table>
       <thead>
         <tr>
@@ -358,21 +365,22 @@ function EventsTable({ events }) {
         {(!events || events.length === 0) && (
           <tr>
             <td colSpan={4} className="muted">
-              No pipeline events recorded yet.
+              {loading ? "Loading…" : "No pipeline events recorded yet."}
             </td>
           </tr>
         )}
       </tbody>
     </table>
+    </div>
   );
 }
 
-function EventsTab({ events, error, refresh }) {
+function EventsTab({ events, error, loading, refresh }) {
   return (
     <div className="panel">
       <Toolbar label="Pipeline event stream (monitor)" onRefresh={refresh} count={events?.length} />
       {error && <div className="error-banner">{error}</div>}
-      <EventsTable events={events} />
+      <EventsTable events={events} loading={loading} />
     </div>
   );
 }
@@ -511,16 +519,18 @@ export default function Home() {
           jobs={jobsQ.data}
           applications={applicationsQ.data}
           events={eventsQ.data}
+          eventsLoading={eventsQ.loading}
           onRun={runAction}
           runningAction={runningAction}
           actionMessage={actionMessage}
         />
       )}
-      {tab === "Jobs" && <JobsTab jobs={jobsQ.data} error={jobsQ.error} refresh={jobsQ.refresh} />}
+      {tab === "Jobs" && <JobsTab jobs={jobsQ.data} error={jobsQ.error} loading={jobsQ.loading} refresh={jobsQ.refresh} />}
       {tab === "Applications" && (
         <ApplicationsTab
           applications={applicationsQ.data}
           error={applicationsQ.error}
+          loading={applicationsQ.loading}
           refresh={applicationsQ.refresh}
           onSubmit={submitApplication}
           submittingApplicationId={runningAction}
@@ -530,11 +540,12 @@ export default function Home() {
         <DocumentsTab
           documents={documentsQ.data}
           error={documentsQ.error}
+          loading={documentsQ.loading}
           refresh={documentsQ.refresh}
         />
       )}
       {tab === "Events" && (
-        <EventsTab events={eventsQ.data} error={eventsQ.error} refresh={eventsQ.refresh} />
+        <EventsTab events={eventsQ.data} error={eventsQ.error} loading={eventsQ.loading} refresh={eventsQ.refresh} />
       )}
       {tab === "Settings" && <SettingsTab status={statusQ.data} />}
     </main>

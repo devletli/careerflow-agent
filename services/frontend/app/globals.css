@@ -77,6 +77,7 @@ body {
   gap: 4px;
   margin-bottom: 16px;
   border-bottom: 1px solid var(--border);
+  overflow-x: auto;
 }
 
 .tab {
@@ -87,6 +88,8 @@ body {
   font-size: 0.95rem;
   color: var(--muted);
   border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .tab.active {
@@ -153,6 +156,14 @@ th {
 
 tr:hover td {
   background: var(--panel-alt);
+}
+
+/* Wide tables (jobs/applications/documents/events) scroll inside the panel
+   instead of overflowing the viewport, so action columns stay reachable. */
+.table-scroll {
+  overflow-x: auto;
+  margin: 0 -20px;
+  padding: 0 20px;
 }
 
 a.link {
