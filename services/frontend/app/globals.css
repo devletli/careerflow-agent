@@ -431,6 +431,62 @@ a.link:hover {
   font-size: 0.9rem;
 }
 
+/* --- Application layout (guiyama.md items 30-33) --- */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.main-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tab-panel {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.table-wrapper {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+@media (max-width: 700px) {
+  .table-wrapper {
+    overflow: hidden;
+  }
+}
+
+/* Responsive table (item 32) */
+.table-fixed {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.cell-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Action cells must remain visible (item 33) */
+.actions-sticky {
+  position: sticky;
+  right: 0;
+  z-index: 10;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+}
+
+/* --- Dark mode / theme (items 36-37) --- */
+
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

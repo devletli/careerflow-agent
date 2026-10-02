@@ -397,6 +397,7 @@ function ApplicationsTab({ applications, error, loading, refresh, onSubmit, subm
   const [minScore, setMinScore] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
   const filtered = (applications || []).filter((a) => {
     const q = query.trim().toLowerCase();
     const matchesQ = !q || `${a.company || ""} ${a.title || ""}`.toLowerCase().includes(q);
@@ -404,6 +405,22 @@ function ApplicationsTab({ applications, error, loading, refresh, onSubmit, subm
     const matchesScore = !minScore || (a.match_score ?? -1) >= Number(minScore);
     return matchesQ && matchesS && matchesScore;
   });
+  // Determine available actions per application state
+  const availableActions = useCallback(() => {
+    const a = applications?.find(x => x.id === submittingApplicationId);
+    if (!a) return {};
+    const status = a.status;
+    const actions: Record<string, string> = {};
+    if (status === "CREATED") actions.prepare = "Prepare";
+    if (status === "READY_TO_SUBMIT") actions.submit = "Submit";
+    if (status === "RUNNING") actions.view = "View progress";
+    if (status === "REQUIRES_HUMAN") actions.continue = "Continue manually";
+    if (status === "FAILED") actions.retry = "Retry";
+    if (status === "SUBMITTED") actions.details = "View details";
+    return actions;
+  }, [applications, submittingApplicationId]);
+  const actions = availableActions();
+  
   return (
     <div className="panel">
       <Toolbar label="Application history" onRefresh={refresh} count={filtered?.length} />
@@ -424,7 +441,7 @@ function ApplicationsTab({ applications, error, loading, refresh, onSubmit, subm
         showScore
       />
       {error && <div className="error-banner">{error}</div>}
-      <table className="responsive">
+      <table className="responsive table-fixed">
         <thead>
           <tr>
             <th>{STRINGS.colJob}</th>
@@ -453,27 +470,36 @@ function ApplicationsTab({ applications, error, loading, refresh, onSubmit, subm
               <td data-label={STRINGS.colDocs}><DocBadges docs={a.documents} /></td>
               <td data-label={STRINGS.colUpdated} className="cell-wrap">{formatDate(a.created_at)}</td>
               <td data-label={STRINGS.colActions} className="application-actions">
-                <a
-                  className="link"
-                  href={a.application_url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {STRINGS.openInBrowser}
-                </a>
-                <a
-                  className="link"
-                  href={`ai-job-agent://prepare?application_id=${a.id}`}
-                >
-                  {STRINGS.fillWithPlaywright}
-                </a>
-                <button
-                  className="refresh-btn primary-btn"
-                  disabled={Boolean(submittingApplicationId)}
-                  onClick={() => onSubmit(a)}
-                >
-                  {submittingApplicationId === a.id ? "Submitting…" : STRINGS.submitWithPlaywright}
-                </button>
+                {actions.prepare && (
+                  <button className="refresh-btn" onClick={() => onSubmit(a)}>
+                    {actions.prepare}
+                  </button>
+                )}
+                {actions.submit && (
+                  <button className="refresh-btn primary-btn" onClick={() => onSubmit(a)} disabled={Boolean(submittingApplicationId)}>
+                    {actions.submit}
+                  </button>
+                )}
+                {actions.view && (
+                  <a className="link" href={`ai-job-agent://prepare?application_id=${a.id}`}>
+                    {actions.view}
+                  </a>
+                )}
+                {actions.continue && (
+                  <button className="refresh-btn" onClick={() => onSubmit(a)}>
+                    {actions.continue}
+                  </button>
+                )}
+                {actions.retry && (
+                  <button className="refresh-btn" onClick={() => onSubmit(a)}>
+                    {actions.retry}
+                  </button>
+                )}
+                {actions.details && (
+                  <a className="link" href={`/applications/${a.id}`}>
+                    {actions.details}
+                  </a>
+                )}
               </td>
             </tr>
           ))}

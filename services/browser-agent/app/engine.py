@@ -5,6 +5,9 @@ passes submit=True AND confirmed=True AND the automation mode allows it
 (FULL_AUTO + AUTO_SUBMIT). In PREPARE_APPLICATION mode nothing is submitted.
 """
 import logging
+import re
+import time
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 from uuid import UUID, uuid4
@@ -15,6 +18,7 @@ from shared.contracts.events import (
     ApplicationFailedEvent,
     ApplicationFilledEvent,
     ApplicationSubmittedEvent,
+    ApplicationRequiresHumanEvent,
 )
 from shared.contracts.models import PipelineStatus
 from shared.db.models import (
@@ -22,12 +26,27 @@ from shared.db.models import (
     ApplicationAnswer,
     ApplicationQuestion,
     AutomationRun,
-    Job,
 )
 from shared.db.session import get_session
-from shared.profile.loader import CanonicalProfile
 
 from browser.site_adapters.base import FieldPlan, FillResult
+
+@dataclass
+class ExecutionResult:
+    execution_id: str = field(default_factory=lambda: str(uuid4()))
+    application_id: Optional[str] = None
+    job_id: Optional[str] = None
+    action: str = ""
+    status: str = "QUEUED"
+    current_step: Optional[str] = None
+    confirmation_url: Optional[str] = None
+    confirmation_reference: Optional[str] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    requires_human: bool = False
+    retryable: bool = True
+
+
 from browser.site_adapters.registry import resolve
 
 logger = logging.getLogger(__name__)
@@ -160,7 +179,9 @@ class BrowserAutomationEngine:
                 if submit and confirmed and self._submit_allowed():
                     if on_submitting is not None:
                         await on_submitting()
-                    result.submitted = await self._click_submit(page)
+                    submit_result = await self._click_submit(page)
+                    result.submitted = submit_result["clicked"]
+                    result.confirmation_detected = submit_result["confirmed"]
                     if not result.submitted:
                         logger.warning("No submit button found")
                 elif submit:
@@ -175,18 +196,59 @@ class BrowserAutomationEngine:
     def _submit_allowed(self) -> bool:
         return settings.AUTOMATION_MODE == "FULL_AUTO" and settings.AUTO_SUBMIT
 
-    async def _click_submit(self, page: Any) -> bool:
+    async def _detect_confirmation(self, page: Any) -> Optional[Dict[str, str]]:
+        """Check for submission confirmation signals.
+        
+        Returns dict with confirmation signals if detected, None otherwise.
+        Signals checked:
+        - URL change containing application reference
+        - Confirmation heading/text
+        - Success message
+        """
+        try:
+            # Check URL for application reference
+            current_url = page.url
+            ref_match = re.search(r"[?&]ref=([^&\n]+)|application=([^&\n]+)|ref_id=([^&\n]+)", current_url)
+            reference = ref_match.group(1) if ref_match else None
+            
+            # Check for confirmation heading
+            confirmation_heading = await page.query_selector(
+                ' text=~"application received|thank you for applying|success|submission confirmed"'
+            )
+            heading_text = await confirmation_heading.inner_text() if confirmation_heading else None
+            
+            # Check for success message
+            success_msg = await page.query_selector(
+                ' text=~"application received|thank you|submission confirmed|your application has been submitted"'
+            )
+            msg_text = await success_msg.inner_text() if success_msg else None
+            
+            if reference or heading_text or msg_text:
+                return {
+                    "reference": reference,
+                    "heading": heading_text,
+                    "message": msg_text,
+                    "url": current_url,
+                }
+        except Exception as e:
+            logger.debug(f"Confirmation detection error: {e}")
+        return None
+
+    async def _click_submit(self, page: Any) -> Dict[str, bool]:
         try:
             for selector in SUBMIT_SELECTORS:
                 button = await page.query_selector(selector)
                 if button and await button.is_visible() and await button.is_enabled():
                     await button.click()
-                    await page.wait_for_timeout(3000)
+                    await page.wait_for_load_state("networkidle", timeout=15000)
                     logger.info("Submit clicked")
-                    return True
+                    
+                    # Detect confirmation after submit (guiyama.md items 22-23)
+                    confirmation = await self._detect_confirmation(page)
+                    return {"clicked": True, "confirmed": confirmation is not None}
         except Exception as exc:
             logger.error(f"Submit failed: {exc}")
-        return False
+        return {"clicked": False, "confirmed": False}
 
     # -------------------------------------------------------- application flow
 
@@ -293,7 +355,7 @@ class BrowserAutomationEngine:
                 )
                 return "BLOCKED"
 
-            if result.submitted:
+            if result.submitted and result.confirmation_detected:
                 await self._mark(app_id, PipelineStatus.SUBMITTED.value)
                 await self._finalize(run_id, "COMPLETED")
                 await self._publish(
@@ -306,17 +368,34 @@ class BrowserAutomationEngine:
                 logger.info(f"Application {app_id} successfully submitted")
                 return "SUBMITTED"
 
-            await self._mark(app_id, PipelineStatus.FILLED.value)
-            await self._finalize(run_id, "COMPLETED")
-            await self._publish(
-                ApplicationFilledEvent(
-                    correlation_id=f"browser-{uuid4().hex[:8]}",
-                    entity_id=str(app_id),
-                    payload={"job_id": str(job.id), "company": job.company, "title": job.title},
+            # Submission clicked but no confirmation detected (guiyama.md item 23)
+            if result.submitted and not result.confirmation_detected:
+                reason = "Submission result could not be verified; may already have been submitted"
+                await self._mark(app_id, PipelineStatus.REQUIRES_HUMAN.value, blocked_reason=reason)
+                await self._finalize(run_id, "REQUIRES_HUMAN", reason=reason)
+                await self._publish(
+                    ApplicationRequiresHumanEvent(
+                        correlation_id=f"browser-{uuid4().hex[:8]}",
+                        entity_id=str(app_id),
+                        payload={"reason": reason, "job_id": str(job.id)},
+                    )
                 )
-            )
-            logger.info(f"Application {app_id} successfully filled")
-            return "FILLED"
+                logger.warning(f"Application {app_id} REQUIRES_HUMAN: {reason}")
+                return "REQUIRES_HUMAN"
+
+            # Submission was not clicked
+            if not result.submitted:
+                await self._mark(app_id, PipelineStatus.FILLED.value)
+                await self._finalize(run_id, "COMPLETED")
+                await self._publish(
+                    ApplicationFilledEvent(
+                        correlation_id=f"browser-{uuid4().hex[:8]}",
+                        entity_id=str(app_id),
+                        payload={"job_id": str(job.id), "company": job.company, "title": job.title},
+                    )
+                )
+                logger.info(f"Application {app_id} successfully filled")
+                return "FILLED"
 
         except Exception as e:
             logger.error(f"Browser agent error for application {app_id}: {e}", exc_info=True)
