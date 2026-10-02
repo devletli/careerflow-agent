@@ -5,6 +5,54 @@ import { fetchJson, formatDate, StatusPill } from "./lib";
 
 const TABS = ["Overview", "Jobs", "Documents", "Applications", "Events", "Settings"];
 const REFRESH_MS = 10000;
+const THEME_KEY = "ai-job-agent-theme";
+
+function useTheme() {
+  const [theme, setTheme] = useState("light");
+
+  useEffect(() => {
+    setTheme(document.documentElement.dataset.theme || "light");
+  }, []);
+
+  const toggle = useCallback(() => {
+    setTheme((prev) => {
+      const next = prev === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      try {
+        localStorage.setItem(THEME_KEY, next);
+      } catch {
+        // storage unavailable: theme still applies for this session
+      }
+      return next;
+    });
+  }, []);
+
+  return { theme, toggle };
+}
+
+function ThemeToggle({ theme, onToggle }) {
+  const isDark = theme === "dark";
+  return (
+    <button
+      type="button"
+      className="theme-toggle"
+      onClick={onToggle}
+      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+    >
+      {isDark ? (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+        </svg>
+      )}
+    </button>
+  );
+}
 
 function useHealth() {
   const [health, setHealth] = useState(null);
@@ -184,37 +232,37 @@ function JobsTab({ jobs, error, loading, refresh }) {
     <div className="panel">
       <Toolbar label="Discovered / matched jobs" onRefresh={refresh} count={jobs?.length} />
       {error && <div className="error-banner">{error}</div>}
-      <div className="table-scroll">
-      <table>
+      <table className="responsive">
         <thead>
           <tr>
-            <th>Company</th>
-            <th>Title</th>
-            <th>Source</th>
+            <th>Job</th>
             <th>Location</th>
-            <th>Remote</th>
             <th>Status</th>
-            <th>Score</th>
-            <th>Result</th>
-            <th>Documents</th>
-            <th>Discovered</th>
+            <th>Match</th>
+            <th>Docs</th>
+            <th>Updated</th>
             <th>Link</th>
           </tr>
         </thead>
         <tbody>
           {(jobs || []).map((j) => (
             <tr key={j.id}>
-              <td>{j.company}</td>
-              <td>{j.title}</td>
-              <td>{j.source}</td>
-              <td>{j.location || "-"}</td>
-              <td>{j.remote_status || "-"}</td>
-              <td><StatusPill status={j.status} /></td>
-              <td>{j.match_score ?? "-"}</td>
-              <td>{j.qualification_status || "-"}</td>
-              <td>{j.document_count ?? 0}</td>
-              <td>{formatDate(j.created_at)}</td>
-              <td>
+              <td data-label="Job" className="cell-main">
+                <div className="cell-title" title={j.title}>{j.title}</div>
+                <div className="cell-sub" title={`${j.company} • ${j.source}`}>{j.company} • {j.source}</div>
+              </td>
+              <td data-label="Location" className="cell-main">
+                <div className="cell-title" title={j.location || "-"}>{j.location || "-"}</div>
+                <div className="cell-sub">{j.remote_status || ""}</div>
+              </td>
+              <td data-label="Status"><StatusPill status={j.status} /></td>
+              <td data-label="Match" className="cell-main">
+                <div className="cell-title">{j.match_score ?? "-"}</div>
+                <div className="cell-sub">{j.qualification_status || ""}</div>
+              </td>
+              <td data-label="Docs">{j.document_count ?? 0}</td>
+              <td data-label="Updated" className="cell-wrap">{formatDate(j.created_at)}</td>
+              <td data-label="Link">
                 <a className="link" href={j.url} target="_blank" rel="noreferrer">
                   View
                 </a>
@@ -223,14 +271,13 @@ function JobsTab({ jobs, error, loading, refresh }) {
           ))}
           {(!jobs || jobs.length === 0) && (
             <tr>
-              <td colSpan={11} className="muted">
+              <td colSpan={7} className="muted">
                 {loading ? "Loading…" : "No jobs discovered yet."}
               </td>
             </tr>
           )}
         </tbody>
       </table>
-      </div>
     </div>
   );
 }
@@ -240,16 +287,12 @@ function ApplicationsTab({ applications, error, loading, refresh, onSubmit, subm
     <div className="panel">
       <Toolbar label="Application history" onRefresh={refresh} count={applications?.length} />
       {error && <div className="error-banner">{error}</div>}
-      <div className="table-scroll">
-      <table>
+      <table className="responsive">
         <thead>
           <tr>
-            <th>Job ID</th>
+            <th>Application</th>
             <th>Status</th>
-            <th>Mode</th>
-            <th>Attempts</th>
-            <th>Blocked Reason</th>
-            <th>Failure Reason</th>
+            <th>Details</th>
             <th>Created</th>
             <th>Actions</th>
           </tr>
@@ -257,14 +300,18 @@ function ApplicationsTab({ applications, error, loading, refresh, onSubmit, subm
         <tbody>
           {(applications || []).map((a) => (
             <tr key={a.id}>
-              <td>{a.job_id.slice(0, 8)}…</td>
-              <td><StatusPill status={a.status} /></td>
-              <td>{a.automation_mode}</td>
-              <td>{a.attempts}</td>
-              <td title={a.blocked_reason || ""}>{a.blocked_reason || "-"}</td>
-              <td title={a.failure_reason || ""}>{a.failure_reason || "-"}</td>
-              <td>{formatDate(a.created_at)}</td>
-              <td className="actions-cell application-actions">
+              <td data-label="Application" className="cell-main">
+                <div className="cell-title" title={`${a.company} — ${a.title}`}>{a.company} — {a.title}</div>
+                <div className="cell-sub">{a.automation_mode} • attempts: {a.attempts} • {a.job_id.slice(0, 8)}…</div>
+              </td>
+              <td data-label="Status"><StatusPill status={a.status} /></td>
+              <td data-label="Details" className="cell-main">
+                <div className="cell-sub" title={a.blocked_reason || a.failure_reason || ""}>
+                  {a.blocked_reason || a.failure_reason || "-"}
+                </div>
+              </td>
+              <td data-label="Created" className="cell-wrap">{formatDate(a.created_at)}</td>
+              <td data-label="Actions" className="application-actions">
                 <a
                   className="link"
                   href={a.application_url}
@@ -291,14 +338,13 @@ function ApplicationsTab({ applications, error, loading, refresh, onSubmit, subm
           ))}
           {(!applications || applications.length === 0) && (
             <tr>
-              <td colSpan={8} className="muted">
+              <td colSpan={5} className="muted">
                 {loading ? "Loading…" : "No applications yet."}
               </td>
             </tr>
           )}
         </tbody>
       </table>
-      </div>
     </div>
   );
 }
@@ -308,8 +354,7 @@ function DocumentsTab({ documents, error, loading, refresh }) {
     <div className="panel">
       <Toolbar label="Generated CVs and cover letters" onRefresh={refresh} count={documents?.length} />
       {error && <div className="error-banner">{error}</div>}
-      <div className="table-scroll">
-      <table>
+      <table className="responsive">
         <thead>
           <tr>
             <th>Document</th>
@@ -323,12 +368,14 @@ function DocumentsTab({ documents, error, loading, refresh }) {
         <tbody>
           {(documents || []).map((document) => (
             <tr key={document.id}>
-              <td>{document.metadata?.filename || `${document.type === "cover_letter" ? "Cover Letter" : "CV"} (${document.language.toUpperCase()} v${document.version})`}</td>
-              <td>{document.metadata?.company || document.job_id.slice(0, 8)}</td>
-              <td>{document.language.toUpperCase()}</td>
-              <td>{document.version}</td>
-              <td>{formatDate(document.created_at)}</td>
-              <td className="actions-cell document-actions">
+              <td data-label="Document" className="cell-main">
+                <div className="cell-title" title={document.metadata?.filename || document.type}>{document.metadata?.filename || `${document.type === "cover_letter" ? "Cover Letter" : "CV"} (${document.language.toUpperCase()} v${document.version})`}</div>
+              </td>
+              <td data-label="Job">{document.metadata?.company || document.job_id.slice(0, 8)}</td>
+              <td data-label="Language">{document.language.toUpperCase()}</td>
+              <td data-label="Version">{document.version}</td>
+              <td data-label="Created" className="cell-wrap">{formatDate(document.created_at)}</td>
+              <td data-label="Open" className="document-actions">
                 <a className="link" href={document.download_url} target="_blank" rel="noreferrer">
                   Open
                 </a>
@@ -343,15 +390,13 @@ function DocumentsTab({ documents, error, loading, refresh }) {
           )}
         </tbody>
       </table>
-      </div>
     </div>
   );
 }
 
 function EventsTable({ events, loading }) {
   return (
-    <div className="table-scroll">
-    <table>
+    <table className="responsive">
       <thead>
         <tr>
           <th>Event Type</th>
@@ -363,10 +408,10 @@ function EventsTable({ events, loading }) {
       <tbody>
         {(events || []).map((e) => (
           <tr key={e.event_id}>
-            <td>{e.event_type}</td>
-            <td>{(e.entity_id || "").slice(0, 8)}…</td>
-            <td>{e.correlation_id}</td>
-            <td>{formatDate(e.timestamp)}</td>
+            <td data-label="Event Type">{e.event_type}</td>
+            <td data-label="Entity">{(e.entity_id || "").slice(0, 8)}…</td>
+            <td data-label="Correlation">{e.correlation_id}</td>
+            <td data-label="Timestamp" className="cell-wrap">{formatDate(e.timestamp)}</td>
           </tr>
         ))}
         {(!events || events.length === 0) && (
@@ -378,7 +423,6 @@ function EventsTable({ events, loading }) {
         )}
       </tbody>
     </table>
-    </div>
   );
 }
 
@@ -435,6 +479,7 @@ export default function Home() {
   const [runningAction, setRunningAction] = useState(null);
   const [actionMessage, setActionMessage] = useState("");
   const { health } = useHealth();
+  const { theme, toggle } = useTheme();
   const statusQ = usePolling("/api/v1/status");
   const jobsQ = usePolling("/api/v1/jobs?limit=100");
   const applicationsQ = usePolling("/api/v1/applications?limit=100");
@@ -505,7 +550,10 @@ export default function Home() {
     <main className="app-shell">
       <div className="app-header">
         <h1>AI Job Agent</h1>
-        <HealthBadges health={health} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <HealthBadges health={health} />
+          <ThemeToggle theme={theme} onToggle={toggle} />
+        </div>
       </div>
 
       <div className="tabs">

@@ -21,33 +21,58 @@ NEXT_CONFIG = ROOT / "services" / "frontend" / "next.config.js"
 
 def test_tables_scroll_inside_panel():
     src = PAGE.read_text(encoding="utf-8")
-    tables = len(re.findall(r"<table>", src))
-    wrappers = len(re.findall(r'className="table-scroll"', src))
-    assert tables >= 4, f"expected at least 4 tables, found {tables}"
-    assert wrappers >= tables, (
-        f"every table needs a .table-scroll wrapper ({wrappers} wrappers, {tables} tables)"
+    assert "table-scroll" not in src, (
+        "tables must fit the viewport via responsive columns, not scroll containers"
     )
+    tables = len(re.findall(r"<table", src))
+    responsive = len(re.findall(r'<table className="responsive"', src))
+    assert tables >= 4, f"expected at least 4 tables, found {tables}"
+    assert responsive >= tables, "every dashboard table must use the responsive layout"
+    labels = len(re.findall(r"data-label=", src))
+    assert labels >= 20, f"stacked mobile rows need data-labels, found {labels}"
 
 
 def test_scroll_css_rules_exist():
     css = CSS.read_text(encoding="utf-8")
-    assert re.search(r"\.table-scroll\s*\{[^}]*overflow-x:\s*auto", css), ".table-scroll needs overflow-x:auto"
-    assert ".table-scroll" in css and "margin: 0 -20px" not in css, (
-        "full-bleed negative margins let row borders escape the panel; "
-        "the scroll container must stay inside the panel padding"
+    assert ".table-scroll" not in css, "no scroll-container workaround may remain in CSS"
+    assert re.search(r"\.tabs\s*\{[^}]*overflow-x:\s*auto", css), (
+        ".tabs nav strip stays scrollable so all tabs remain reachable on narrow screens"
     )
-    assert re.search(r"\.tabs\s*\{[^}]*overflow-x:\s*auto", css), ".tabs needs overflow-x:auto"
     assert re.search(r"\.tab\s*\{[^}]*white-space:\s*nowrap", css), ".tab needs white-space:nowrap"
+    assert "@media (max-width:" in css and "table.responsive" in css, (
+        "narrow viewports must stack table rows instead of scrolling"
+    )
 
 
 def test_action_cells_keep_buttons_visible():
     css = CSS.read_text(encoding="utf-8")
     src = PAGE.read_text(encoding="utf-8")
-    assert "actions-cell" in src, "action columns must opt out of cell truncation"
-    assert re.search(r"td\.actions-cell\s*\{[^}]*max-width:\s*none", css), (
-        "action cells must not be capped at the truncated cell width"
+    assert "application-actions" in src and "document-actions" in src
+    assert re.search(r"\.application-actions\s*\{[^}]*flex-wrap:\s*wrap", css), (
+        "action buttons must wrap instead of clipping"
     )
     assert "flex-shrink: 0" in css, "action buttons must not shrink"
+
+
+def test_theme_toggle_and_persistence():
+    src = PAGE.read_text(encoding="utf-8")
+    assert "useTheme" in src and "ai-job-agent-theme" in src
+    assert 'aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}' in src
+    assert "localStorage.setItem" in src
+    assert "<ThemeToggle" in src
+    layout = (ROOT / "services" / "frontend" / "app" / "layout.js").read_text(encoding="utf-8")
+    assert "ai-job-agent-theme" in layout and "prefers-color-scheme" in layout, (
+        "an inline startup script must apply the stored/system theme before first paint"
+    )
+
+
+def test_dark_theme_variables():
+    css = CSS.read_text(encoding="utf-8")
+    assert '[data-theme="dark"]' in css
+    dark_block = css.split('[data-theme="dark"]', 1)[1]
+    for var in ["--panel:", "--text:", "--border:", "--accent:"]:
+        assert var in dark_block, f"dark theme must override {var}"
+    assert "color-scheme: dark" in dark_block
 
 
 def test_tables_show_loading_state():

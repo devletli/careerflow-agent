@@ -7,10 +7,34 @@
   --text: #0f172a;
   --muted: #64748b;
   --accent: #2563eb;
+  --accent-hover: #1d4ed8;
   --ok: #16a34a;
   --warn: #d97706;
   --err: #dc2626;
   --blocked: #7c3aed;
+  --info-bg: #eff6ff;
+  --info-border: #bfdbfe;
+  --info-text: #1e40af;
+  --danger-bg: #fef2f2;
+  --danger-border: #fecaca;
+}
+
+/* Dark theme: same semantic variables, professional dark dashboard palette. */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b0b0b;
+  --panel: #151515;
+  --panel-alt: #0b0b0b;
+  --border: #292929;
+  --text: #f5f5f5;
+  --muted: #a3a3a3;
+  --accent: #60a5fa;
+  --accent-hover: #93c5fd;
+  --info-bg: #17233a;
+  --info-border: #2c4a7c;
+  --info-text: #bfdbfe;
+  --danger-bg: #2b1518;
+  --danger-border: #7f2d2d;
 }
 
 * {
@@ -60,6 +84,29 @@ body {
   font-weight: 600;
   border: 1px solid var(--border);
   background: var(--panel);
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+}
+
+.theme-toggle:hover {
+  background: var(--panel-alt);
+}
+
+.theme-toggle svg {
+  width: 16px;
+  height: 16px;
 }
 
 .dot {
@@ -158,17 +205,94 @@ tr:hover td {
   background: var(--panel-alt);
 }
 
-/* Wide tables (jobs/applications/documents/events) scroll inside the padded
-   panel instead of overflowing the viewport, so action columns stay reachable
-   without breaking the panel's borders. */
-.table-scroll {
-  overflow-x: auto;
+/* Primary table cell: flexible stacked title + muted subtitle, truncates
+   instead of forcing the table wider. */
+.cell-main {
+  min-width: 0;
 }
 
-/* Action cells must never truncate buttons: they keep natural width and wrap. */
-.table-scroll td.actions-cell {
-  max-width: none;
+/* Timestamps may wrap after the comma so date columns stay narrow. */
+.cell-wrap {
   white-space: normal;
+}
+
+.cell-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 340px;
+}
+
+.cell-sub {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 340px;
+}
+
+/* Narrow viewports: rows become stacked cards instead of a squeezed table.
+   No horizontal scrolling is used anywhere for dashboard content. */
+@media (max-width: 700px) {
+  .panel {
+    padding: 14px;
+  }
+
+  table.responsive thead {
+    display: none;
+  }
+
+  table.responsive,
+  table.responsive tbody,
+  table.responsive tr,
+  table.responsive td {
+    display: block;
+    width: 100%;
+  }
+
+  table.responsive tr {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    padding: 4px 12px;
+  }
+
+  table.responsive tr:hover td {
+    background: none;
+  }
+
+  table.responsive td {
+    border-bottom: none;
+    padding: 6px 0;
+    max-width: none;
+    white-space: normal;
+  }
+
+  table.responsive td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  /* Action cells keep their wrapping flex row (with gaps) instead of
+     collapsing into gapless block content. */
+  table.responsive td.application-actions,
+  table.responsive td.document-actions {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  table.responsive .cell-title,
+  table.responsive .cell-sub {
+    max-width: none;
+    white-space: normal;
+  }
 }
 
 a.link {
@@ -237,7 +361,7 @@ a.link:hover {
 }
 
 .primary-btn:hover {
-  background: #1d4ed8;
+  background: var(--accent-hover);
 }
 
 .action-grid {
@@ -264,11 +388,11 @@ a.link:hover {
 
 .action-message {
   margin: 12px 0;
-  border: 1px solid #bfdbfe;
+  border: 1px solid var(--info-border);
   border-radius: 8px;
   padding: 9px 12px;
-  background: #eff6ff;
-  color: #1e40af;
+  background: var(--info-bg);
+  color: var(--info-text);
   font-size: 0.9rem;
 }
 
@@ -298,8 +422,8 @@ a.link:hover {
 }
 
 .error-banner {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
   color: var(--err);
   padding: 10px 14px;
   border-radius: 8px;

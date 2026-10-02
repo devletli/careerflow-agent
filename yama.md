@@ -1,191 +1,714 @@
-Sen kıdemli bir Python/DevOps mühendisisin. Repo: careerflow-agent (Docker microservices, FastAPI, Redis Streams, Postgres+Alembic, MinIO, Playwright, Next.js).
+You are working inside the EXISTING local repository:
 
-ÖNCE: services/, shared/, browser/site_adapters/, docker-compose.yml, Makefile, .gitignore ve tests/ klasörlerini oku. Aşağıdaki görevleri mevcut mimariye ve isimlendirmeye uyarak uygula. Var olan testleri bozma; her görev sonunda `python -m pytest -v` çalıştır. Görev başına ayrı commit at.
+careerflow-agent
 
-## Görev 1 — .env.example ve gizli bilgi hijyeni
-- `#test commit` satırını sil.
-- Şifreleri placeholder yap, README'deki "minioadmin / minioadmin" ifadesini kaldır:
-  POSTGRES_PASSWORD=CHANGE_ME_STRONG_PASSWORD
-  MINIO_ACCESS_KEY=CHANGE_ME_MINIO_USER
-  MINIO_SECRET_KEY=CHANGE_ME_MINIO_SECRET_MIN_16_CHARS
-- Yeni değişkenler ekle:
-  API_KEY=CHANGE_ME_LONG_RANDOM
-  CORS_ORIGINS=http://localhost:3000
-  LOG_REDACT_PII=true
-- MIN_MATCH_SCORE=95 yerine 80 yap ve yanına yorum ekle:
-  `# 0-100. 95 çok katı; önce 75-85 ile deneyin.`
-- .gitignore'da şunların ignore edildiğini doğrula/ekle:
-  .env, profile/master_cv.pdf, profile/profile.yaml, profile/preferences.yaml,
-  *.pdf artefaktları, browser state/cookie dizinleri. Bunların yerine
-  profile/profile.example.yaml ve preferences.example.yaml oluştur.
+This is an incremental UI improvement.
 
-## Görev 2 — Başlangıçta güvenlik doğrulaması (fail-fast)
-shared/config.py (yoksa oluştur) içinde pydantic-settings kullan:
+The user will review and commit the changes manually.
 
-```python
-from pydantic import model_validator
-from pydantic_settings import BaseSettings
+## GIT RULE
 
-WEAK = {"change_me", "minioadmin", ""}
+DO NOT:
 
-class Settings(BaseSettings):
-    AUTOMATION_MODE: str = "PREPARE_APPLICATION"
-    AUTO_SUBMIT: bool = False
-    MIN_MATCH_SCORE: int = 80
-    MAX_APPLICATIONS_PER_DAY: int = 20
-    MAX_APPLICATIONS_PER_HOUR: int = 5
-    POSTGRES_PASSWORD: str
-    MINIO_SECRET_KEY: str
-    API_KEY: str = ""
-    ENV: str = "dev"  # dev | prod
+* git commit
+* git push
+* reset
+* rebase
+* rewrite history
+* create branches
 
-    @model_validator(mode="after")
-    def _check(self):
-        if self.AUTOMATION_MODE not in {"PREPARE_APPLICATION", "FULL_AUTO"}:
-            raise ValueError("AUTOMATION_MODE invalid")
-        if self.AUTO_SUBMIT and self.AUTOMATION_MODE != "FULL_AUTO":
-            raise ValueError("AUTO_SUBMIT=true requires AUTOMATION_MODE=FULL_AUTO")
-        if self.AUTOMATION_MODE == "FULL_AUTO" and not self.AUTO_SUBMIT:
-            raise ValueError("FULL_AUTO requires explicit AUTO_SUBMIT=true")
-        if not 0 <= self.MIN_MATCH_SCORE <= 100:
-            raise ValueError("MIN_MATCH_SCORE must be 0-100")
-        if self.MAX_APPLICATIONS_PER_HOUR > self.MAX_APPLICATIONS_PER_DAY:
-            raise ValueError("hourly limit cannot exceed daily limit")
-        if self.ENV == "prod":
-            if self.POSTGRES_PASSWORD.lower() in WEAK or self.MINIO_SECRET_KEY.lower() in WEAK:
-                raise ValueError("weak default secrets are not allowed in prod")
-            if len(self.API_KEY) < 24:
-                raise ValueError("API_KEY must be >= 24 chars in prod")
-        return self
+Only modify the local working tree.
 
-settings = Settings()
-```
-Tüm servislerdeki dağınık os.getenv kullanımlarını bu modüle taşı.
+---
 
-## Görev 3 — API kimlik doğrulama
-Özellikle "Playwright ile Gönder", discovery/matching tetikleme ve settings uçları korunmalı.
+# OBJECTIVES
 
-```python
-# services/api/security.py
-import hmac
-from fastapi import Header, HTTPException, status
-from shared.config import settings
+Implement TWO focused improvements:
 
-async def require_api_key(x_api_key: str = Header(default="")):
-    if not settings.API_KEY or not hmac.compare_digest(x_api_key, settings.API_KEY):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid api key")
-```
-- /health hariç tüm router'lara `dependencies=[Depends(require_api_key)]` ekle.
-- Mutating/submit uçlarına ek olarak body'de `{"confirm": true, "application_id": ...}` zorunlu kıl.
-- Next.js rewrites üzerinden X-API-Key başlığını sunucu tarafında ekle (anahtar tarayıcıya sızmasın; NEXT_PUBLIC_ önekini KULLANMA).
-- CORS'u yalnızca CORS_ORIGINS ile sınırla.
+## 1. DARK MODE / LIGHT MODE TOGGLE
 
-## Görev 4 — docker-compose sertleştirme
-- Portları yerel ağa bağla: "127.0.0.1:8000:8000", "127.0.0.1:3000:3000", "127.0.0.1:9001:9001"; postgres/redis/minio S3 portlarını host'a hiç açma.
-- Her servise healthcheck ekle (postgres: pg_isready, redis: redis-cli ping, api: curl /health) ve `depends_on: condition: service_healthy` kullan.
-- `restart: unless-stopped`, `read_only: true` (mümkünse) ve `mem_limit` ekle.
-- browser-agent'ı headless tut; sadece gerekli volume'ları mount et.
+The current GUI is visually too white.
 
-## Görev 5 — browser-agent'ı BrowserAutomationEngine + SiteAdapter olarak böl
-worker.py'yi şu yapıya ayır (davranışı değiştirme, sadece refactor):
+Add a user-facing theme toggle that allows:
 
-```
-services/browser_agent/
-  engine.py            # BrowserAutomationEngine: context, retry, stop-conditions, screenshot
-  safety.py            # captcha/login-wall/MFA tespiti -> HardStop
-  adapters/
-    base.py            # SiteAdapter (ABC)
-    generic.py         # mevcut accessible-locator-first mantığı
-    workable.py
-    registry.py
-  worker.py            # sadece Redis consumer; engine'i çağırır
+Light mode
+↔
+Dark mode
+
+The toggle should be accessible from the existing dashboard header/navigation/settings area.
+
+Prefer a simple sun/moon button with tooltip/title.
+
+Example:
+
+```tsx
+<button
+  type="button"
+  onClick={toggleTheme}
+  aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+  title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+>
+  {isDark ? <Sun /> : <Moon />}
+</button>
 ```
 
-```python
-# adapters/base.py
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from playwright.async_api import Page
+IMPORTANT:
 
-@dataclass
-class FillResult:
-    filled: list[str]
-    skipped: list[str]      # doğrulanmış profil verisi olmayan alanlar
-    needs_human: list[str]  # captcha/login/açık uçlu
-    submitted: bool = False
+Before implementing this, inspect whether the project already uses:
 
-class SiteAdapter(ABC):
-    name: str
-    @classmethod
-    @abstractmethod
-    def matches(cls, url: str) -> bool: ...
-    @abstractmethod
-    async def fill(self, page: Page, answers: dict, docs: dict) -> FillResult: ...
-    async def submit(self, page: Page) -> bool:
-        raise NotImplementedError
+* Tailwind dark mode
+* CSS variables
+* next-themes
+* ThemeProvider
+* localStorage
+* system theme detection
 
-# adapters/registry.py
-from .workable import WorkableAdapter
-from .generic import GenericAdapter
-_ADAPTERS = [WorkableAdapter, GenericAdapter]  # generic her zaman son
-def resolve(url: str):
-    return next(a for a in _ADAPTERS if a.matches(url))()
+If an existing theme mechanism exists, USE IT.
+
+Do NOT introduce a second theme system.
+
+If no theme system exists, implement the smallest maintainable solution.
+
+---
+
+# DARK THEME IMPLEMENTATION
+
+Prefer semantic theme variables instead of hardcoding black/white everywhere.
+
+For example, if the project uses CSS variables:
+
+```css
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --card: #ffffff;
+  --card-foreground: #171717;
+  --border: #e5e7eb;
+  --muted: #f3f4f6;
+}
+
+.dark {
+  --background: #0b0b0b;
+  --foreground: #f5f5f5;
+  --card: #151515;
+  --card-foreground: #f5f5f5;
+  --border: #2a2a2a;
+  --muted: #1f1f1f;
+}
 ```
 
-```python
-# safety.py
-class HardStop(Exception): ...
-CAPTCHA_SELECTORS = ["iframe[src*='recaptcha']", "iframe[src*='hcaptcha']", "[data-sitekey]"]
-async def assert_no_blockers(page):
-    for sel in CAPTCHA_SELECTORS:
-        if await page.locator(sel).count():
-            raise HardStop("captcha")
-    if await page.locator("input[type=password]").count():
-        raise HardStop("login_wall")
+Adapt the actual values to the existing design.
+
+DO NOT make the entire interface pure `#000000` unless the existing design already uses that aesthetic.
+
+Prefer a professional dark dashboard:
+
+background ≈ #0b0b0b
+cards ≈ #151515
+borders ≈ #292929
+primary text ≈ #f5f5f5
+secondary text ≈ #a3a3a3
+
+The exact values are not mandatory; consistency is.
+
+---
+
+# THEME PERSISTENCE
+
+The user's selection should survive page reload.
+
+If the project already uses a theme library, use its persistence mechanism.
+
+Otherwise use localStorage or the project's existing client-side preference mechanism.
+
+Do not introduce a backend setting for this.
+
+The theme is a local UI preference.
+
+---
+
+# AVOID FLASH OF WRONG THEME
+
+If using Next.js/server rendering:
+
+Do not introduce a noticeable:
+
+dark → white → dark
+
+flash on page load.
+
+If the project already uses `next-themes`, configure it correctly.
+
+If implementing manually, use the smallest SSR-safe approach available in the current architecture.
+
+Do not convert the whole application to a new rendering architecture.
+
+---
+
+# DARK MODE COVERAGE
+
+The theme must apply consistently to:
+
+* dashboard background
+* sidebar
+* header
+* tabs
+* cards
+* tables
+* forms
+* inputs
+* buttons
+* dropdowns
+* dialogs/modals
+* status badges
+* Applications
+* Documents
+* Jobs
+* Events
+* Settings
+* empty states
+* loading states
+* error states
+
+Do not leave large white rectangles in dark mode.
+
+Avoid isolated hard-coded classes such as:
+
+```text
+bg-white
+text-black
+border-gray-200
 ```
-HardStop yakalandığında application durumu NEEDS_HUMAN olur ve olay DB'ye yazılır; asla atlatma denenmez.
 
-## Görev 6 — Sahte form fixture'larıyla tarayıcı regresyon testleri
-- tests/fixtures/forms/{simple.html, with_captcha.html, with_login.html, custom_questions.html} oluştur.
-- pytest-playwright ile file:// üzerinden test et:
-  * simple.html: tüm doğrulanmış alanlar dolar, submitted=False.
-  * with_captcha.html / with_login.html: HardStop fırlatılır.
-  * custom_questions.html: açık uçlu/yasal sorular `needs_human` listesine gider, uydurma cevap yazılmaz.
-  * PREPARE_APPLICATION modunda submit() ASLA çağrılmaz (mock ile assert et).
+when they prevent the dark theme from working.
 
-## Görev 7 — Log'larda PII maskeleme
-structlog/logging filter ekle: e-posta, telefon ve profile.yaml içindeki ad/soyad değerlerini `***` ile değiştirsin. LOG_REDACT_PII=true iken aktif. Birim testi yaz.
+Replace them with the project's existing semantic/theme mechanism.
 
-## Görev 8 — CI ve operasyon
-.github/workflows/ci.yml:
-```yaml
-name: ci
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: pip install -e ./shared pytest pytest-asyncio aiosqlite pytest-playwright ruff
-      - run: playwright install --with-deps chromium
-      - run: ruff check .
-      - run: python -m pytest -v
-      - run: cp .env.example .env && docker compose config -q
+Do not blindly replace every `white` string globally.
+
+Inspect each component.
+
+---
+
+# 2. NO HORIZONTAL SCROLLING IN DASHBOARD TABS
+
+The user explicitly does NOT want horizontal scrolling inside tabs.
+
+This applies especially to:
+
+* Applications
+* Jobs
+* Documents
+* Events
+* Settings
+
+The primary dashboard experience should fit the viewport.
+
+IMPORTANT:
+
+Do NOT solve this by:
+
+```css
+overflow-x: auto;
 ```
-Makefile'a ekle:
-```make
-backup:
-	docker compose exec -T postgres pg_dump -U $$POSTGRES_USER $$POSTGRES_DB | gzip > backups/db-$$(date +%F).sql.gz
-restore:
-	gunzip -c $(FILE) | docker compose exec -T postgres psql -U $$POSTGRES_USER $$POSTGRES_DB
+
+on the tab.
+
+That was an earlier approach and is not desired here.
+
+Do NOT make the user drag a table horizontally.
+
+Instead make the content responsive.
+
+---
+
+# APPLICATIONS — RESPONSIVE TABLE
+
+Inspect the actual Applications table.
+
+Determine its actual columns.
+
+Do not assume column names.
+
+The table should fit approximately:
+
+1440×900
+1280×800
+1024×768
+
+without horizontal scrolling.
+
+---
+
+# RESPONSIVE TABLE STRATEGY
+
+Use the existing design system.
+
+If the table currently has too many columns, prioritize information.
+
+Example hierarchy:
+
+PRIMARY:
+
+* Job / Position
+* Company
+* Status
+* Match
+
+SECONDARY:
+
+* Created date
+* Documents
+* Application metadata
+
+ACTIONS:
+
+* View
+* Open
+* Analyze
+* Browser actions
+
+Do NOT remove existing functionality.
+
+Instead change presentation.
+
+For example, rather than:
+
+```text
+Company | Job Title | Status | Match | Created | CV | Cover Letter | Browser | Submit
 ```
-docs/runbook.md: yedekleme, geri yükleme, MinIO bucket yedeği, anahtar rotasyonu adımları.
 
-## Görev 9 — README güncellemesi
-- Phase durumunu gerçeğe uydur (Phase 6 refactor tamamlandı, Phase 10 kısmen: CI + fixtures + runbook).
-- Güvenlik bölümü: API_KEY, 127.0.0.1 bağlama, fail-fast config.
-- Varsayılan kimlik bilgisi ifadelerini kaldır.
+which is too wide,
 
-Çıktı olarak: değişen dosyaların listesi, her görev için test sonucu ve çözülemeyen/varsayım yaptığın noktaların kısa özeti ver.
+use:
+
+```text
+Company / Job
+Status
+Match
+Updated
+Actions
+```
+
+and place secondary information inside the Job/Application details view or compact metadata.
+
+ONLY do this if the current UI genuinely contains too many columns.
+
+Do not remove data from the backend.
+
+---
+
+# TABLE CELL RULES
+
+Long text must not force the table wider.
+
+For example:
+
+```tsx
+<td className="min-w-0">
+  <div className="min-w-0">
+    <div className="truncate font-medium">
+      {job.title}
+    </div>
+    <div className="truncate text-sm text-muted-foreground">
+      {company.name}
+    </div>
+  </div>
+</td>
+```
+
+Use:
+
+```text
+truncate
+overflow-hidden
+text-ellipsis
+whitespace-nowrap
+min-w-0
+```
+
+where appropriate.
+
+For information that should wrap instead of truncate:
+
+```tsx
+<div className="break-words">
+  {description}
+</div>
+```
+
+Do NOT allow URLs, artifact paths or long error messages to determine the table width.
+
+---
+
+# ACTION BUTTONS
+
+Actions must remain usable without expanding the table.
+
+Use compact buttons.
+
+Example:
+
+```tsx
+<div className="flex items-center justify-end gap-1.5 flex-wrap">
+  <Button size="sm">View</Button>
+  <Button size="sm">Analyze</Button>
+  <Button size="sm">Open</Button>
+</div>
+```
+
+If there are too many actions, use an existing dropdown/menu component:
+
+```text
+[View] [⋯]
+```
+
+with:
+
+* Analyze
+* Generate CV
+* Generate Cover Letter
+* Browser actions
+* etc.
+
+Do NOT remove functionality.
+
+Do NOT create extremely tiny unreadable buttons.
+
+---
+
+# APPLICATIONS MOBILE / NARROW VIEW
+
+At narrow widths, a table may no longer be the correct representation.
+
+If the current application already has a card/list component, use it.
+
+Otherwise, if necessary, introduce a responsive presentation:
+
+Desktop:
+
+```text
+Applications table
+```
+
+Narrow:
+
+```text
+Application cards
+```
+
+Example:
+
+```tsx
+<div className="grid gap-3 md:hidden">
+  {applications.map(application => (
+    <ApplicationCard
+      key={application.id}
+      application={application}
+    />
+  ))}
+</div>
+
+<div className="hidden md:block">
+  <ApplicationsTable
+    applications={applications}
+  />
+</div>
+```
+
+ONLY introduce this if the current table genuinely cannot fit without destroying readability.
+
+Do not build a second completely independent application implementation if the existing components can be reused.
+
+---
+
+# DASHBOARD WIDTH
+
+Inspect the dashboard shell.
+
+The intended structure should conceptually be:
+
+```tsx
+<div className="min-h-screen w-full">
+  <Sidebar />
+
+  <main className="min-w-0 flex-1">
+    <Header />
+
+    <div className="w-full min-w-0 px-4 sm:px-6 lg:px-8">
+      <TabContent />
+    </div>
+  </main>
+</div>
+```
+
+Adapt to the actual implementation.
+
+The important properties are:
+
+```text
+main:
+flex: 1
+min-width: 0
+
+content:
+width: 100%
+min-width: 0
+```
+
+Do NOT introduce a restrictive:
+
+```text
+max-w-*
+```
+
+on the main dashboard content unless the existing design explicitly requires it.
+
+---
+
+# OTHER TABS
+
+Perform the same responsive inspection for:
+
+## Jobs
+
+Cards/list must fit viewport.
+
+## Documents
+
+Document rows/cards must fit.
+
+Do NOT show raw internal artifact paths as wide text.
+
+Use:
+
+```text
+Document name
+Type
+Created
+Status
+[View] [Download]
+```
+
+with long paths hidden from normal presentation.
+
+## Events
+
+Long event messages must wrap/truncate.
+
+## Settings
+
+Forms should fit the content area without horizontal overflow.
+
+---
+
+# NO PAGE-LEVEL HORIZONTAL OVERFLOW
+
+After implementation, verify:
+
+```js
+document.documentElement.scrollWidth <= window.innerWidth
+```
+
+for the main dashboard screens.
+
+If false, find the element causing the overflow.
+
+Do NOT simply hide it with:
+
+```css
+overflow-x: hidden;
+```
+
+That would hide the bug.
+
+Find the actual overflowing element.
+
+---
+
+# RESPONSIVE ACCEPTANCE TEST
+
+Check the application at:
+
+### Desktop
+
+1440 × 900
+
+### Laptop
+
+1280 × 800
+
+### Small desktop/tablet
+
+1024 × 768
+
+### Mobile
+
+390 × 844
+
+At every size verify:
+
+* no page-level horizontal scrolling
+* no important button is clipped
+* Applications fits
+* Documents fits
+* Jobs fits
+* Events fits
+* Settings fits
+* sidebar/navigation remains usable
+* theme toggle remains accessible
+
+---
+
+# IMPLEMENTATION REQUIREMENT
+
+Do not merely describe the changes.
+
+Actually modify the existing code.
+
+For every important change identify:
+
+1. Actual file path.
+2. Actual component/function.
+3. Existing problematic code.
+4. Replacement implementation.
+5. Why the change fixes the problem.
+
+For example:
+
+```text
+FILE:
+frontend/src/.../Applications.tsx
+
+COMPONENT:
+ApplicationsTable
+
+PROBLEM:
+The table has 9 fixed-width columns and its parent uses
+overflow-x-auto.
+
+CHANGE:
+Remove fixed column widths, consolidate secondary metadata,
+make title/company cell flexible, and move secondary actions
+into the existing dropdown.
+
+RESULT:
+Applications fits the available dashboard width without
+horizontal scrolling.
+```
+
+Use the REAL paths and REAL components discovered in the repository.
+
+Do NOT invent filenames.
+
+---
+
+# TESTING
+
+Run the project's existing:
+
+* lint
+* typecheck
+* build
+* frontend tests
+* browser tests
+
+Then manually/browser-test:
+
+Applications
+Documents
+Jobs
+Events
+Settings
+
+at all four viewport sizes.
+
+Also test:
+
+1. Start in light mode.
+2. Switch to dark.
+3. Reload.
+4. Confirm dark mode persists.
+5. Switch back to light.
+6. Reload.
+7. Confirm light mode persists.
+
+Check browser console for errors.
+
+Check network requests for failed API calls.
+
+---
+
+# DO NOT OVERENGINEER
+
+Do NOT:
+
+* add a new frontend framework
+* add a new state management library
+* rewrite the dashboard
+* create a new design system
+* introduce a backend theme API
+* add unnecessary dependencies
+* redesign the entire application
+* remove application functionality
+* hide overflow globally
+* solve table problems with horizontal scrolling
+
+Use the existing architecture.
+
+---
+
+# FINAL REPORT
+
+Return:
+
+## Root causes found
+
+Especially:
+
+* why Applications was too narrow
+* which elements caused overflow
+* whether other tabs had the same issue
+
+## Files changed
+
+Actual paths.
+
+## Implementation
+
+For each file explain the actual code/component change.
+
+## Theme
+
+Explain:
+
+* existing theme mechanism reused or new minimal mechanism
+* persistence
+* dark-mode coverage
+
+## Responsive behavior
+
+Explain how Applications and other tabs now fit without horizontal scrolling.
+
+## Tests
+
+Exact commands and results.
+
+## Manual viewport checks
+
+1440×900
+1280×800
+1024×768
+390×844
+
+## Remaining issues
+
+Only real unresolved issues.
+
+## Git
+
+Confirm:
+
+NO commit.
+NO push.
+Changes remain local and uncommitted.
