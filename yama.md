@@ -1,560 +1,191 @@
-You are working on the existing local repository `careerflow-agent`.
+Sen kıdemli bir Python/DevOps mühendisisin. Repo: careerflow-agent (Docker microservices, FastAPI, Redis Streams, Postgres+Alembic, MinIO, Playwright, Next.js).
 
-IMPORTANT WORKFLOW RULES:
+ÖNCE: services/, shared/, browser/site_adapters/, docker-compose.yml, Makefile, .gitignore ve tests/ klasörlerini oku. Aşağıdaki görevleri mevcut mimariye ve isimlendirmeye uyarak uygula. Var olan testleri bozma; her görev sonunda `python -m pytest -v` çalıştır. Görev başına ayrı commit at.
 
-* The repository is already implemented. Do NOT restart or redesign the project.
-* First inspect the CURRENT working tree and the CURRENT implementation.
-* The user commits changes manually. DO NOT run `git commit`, `git push`, `git reset --hard`, or rewrite git history.
-* Make only the changes required for this task.
-* Do not create placeholder components, TODOs, fake data, mock UI, or pseudocode.
-* Do not modify the matching algorithm, database schema, orchestrator, browser-agent architecture, or document-generation architecture unless you find a concrete regression directly caused by the Applications UI.
-* Preserve all existing functionality.
-* This is a real bug-fix task, not a visual redesign.
+## Görev 1 — .env.example ve gizli bilgi hijyeni
+- `#test commit` satırını sil.
+- Şifreleri placeholder yap, README'deki "minioadmin / minioadmin" ifadesini kaldır:
+  POSTGRES_PASSWORD=CHANGE_ME_STRONG_PASSWORD
+  MINIO_ACCESS_KEY=CHANGE_ME_MINIO_USER
+  MINIO_SECRET_KEY=CHANGE_ME_MINIO_SECRET_MIN_16_CHARS
+- Yeni değişkenler ekle:
+  API_KEY=CHANGE_ME_LONG_RANDOM
+  CORS_ORIGINS=http://localhost:3000
+  LOG_REDACT_PII=true
+- MIN_MATCH_SCORE=95 yerine 80 yap ve yanına yorum ekle:
+  `# 0-100. 95 çok katı; önce 75-85 ile deneyin.`
+- .gitignore'da şunların ignore edildiğini doğrula/ekle:
+  .env, profile/master_cv.pdf, profile/profile.yaml, profile/preferences.yaml,
+  *.pdf artefaktları, browser state/cookie dizinleri. Bunların yerine
+  profile/profile.example.yaml ve preferences.example.yaml oluştur.
 
-## PRIMARY BUG
+## Görev 2 — Başlangıçta güvenlik doğrulaması (fail-fast)
+shared/config.py (yoksa oluştur) içinde pydantic-settings kullan:
 
-The `Applications` dashboard tab is STILL not displayed at the correct width.
+```python
+from pydantic import model_validator
+from pydantic_settings import BaseSettings
 
-Previous attempts to fix it made the situation worse. Therefore DO NOT simply add more padding, increase arbitrary widths, or add another `overflow-x-auto`.
+WEAK = {"change_me", "minioadmin", ""}
 
-Find the actual layout constraint causing the Applications section/table to be narrower than the available dashboard content area.
+class Settings(BaseSettings):
+    AUTOMATION_MODE: str = "PREPARE_APPLICATION"
+    AUTO_SUBMIT: bool = False
+    MIN_MATCH_SCORE: int = 80
+    MAX_APPLICATIONS_PER_DAY: int = 20
+    MAX_APPLICATIONS_PER_HOUR: int = 5
+    POSTGRES_PASSWORD: str
+    MINIO_SECRET_KEY: str
+    API_KEY: str = ""
+    ENV: str = "dev"  # dev | prod
 
-The goal is:
+    @model_validator(mode="after")
+    def _check(self):
+        if self.AUTOMATION_MODE not in {"PREPARE_APPLICATION", "FULL_AUTO"}:
+            raise ValueError("AUTOMATION_MODE invalid")
+        if self.AUTO_SUBMIT and self.AUTOMATION_MODE != "FULL_AUTO":
+            raise ValueError("AUTO_SUBMIT=true requires AUTOMATION_MODE=FULL_AUTO")
+        if self.AUTOMATION_MODE == "FULL_AUTO" and not self.AUTO_SUBMIT:
+            raise ValueError("FULL_AUTO requires explicit AUTO_SUBMIT=true")
+        if not 0 <= self.MIN_MATCH_SCORE <= 100:
+            raise ValueError("MIN_MATCH_SCORE must be 0-100")
+        if self.MAX_APPLICATIONS_PER_HOUR > self.MAX_APPLICATIONS_PER_DAY:
+            raise ValueError("hourly limit cannot exceed daily limit")
+        if self.ENV == "prod":
+            if self.POSTGRES_PASSWORD.lower() in WEAK or self.MINIO_SECRET_KEY.lower() in WEAK:
+                raise ValueError("weak default secrets are not allowed in prod")
+            if len(self.API_KEY) < 24:
+                raise ValueError("API_KEY must be >= 24 chars in prod")
+        return self
 
-1. Applications content uses the full available dashboard width.
-2. The table is readable at 1440×900 and 1280×800.
-3. All important columns and actions remain accessible.
-4. The table may scroll horizontally when genuinely necessary.
-5. The parent dashboard layout must NOT shrink the Applications tab unnecessarily.
-6. Other dashboard tabs must not regress.
-7. No horizontal page-level overflow should be introduced.
+settings = Settings()
+```
+Tüm servislerdeki dağınık os.getenv kullanımlarını bu modüle taşı.
 
----
+## Görev 3 — API kimlik doğrulama
+Özellikle "Playwright ile Gönder", discovery/matching tetikleme ve settings uçları korunmalı.
 
-# STEP 1 — INSPECT THE CURRENT IMPLEMENTATION
+```python
+# services/api/security.py
+import hmac
+from fastapi import Header, HTTPException, status
+from shared.config import settings
 
-Before editing anything, inspect the actual repository.
+async def require_api_key(x_api_key: str = Header(default="")):
+    if not settings.API_KEY or not hmac.compare_digest(x_api_key, settings.API_KEY):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid api key")
+```
+- /health hariç tüm router'lara `dependencies=[Depends(require_api_key)]` ekle.
+- Mutating/submit uçlarına ek olarak body'de `{"confirm": true, "application_id": ...}` zorunlu kıl.
+- Next.js rewrites üzerinden X-API-Key başlığını sunucu tarafında ekle (anahtar tarayıcıya sızmasın; NEXT_PUBLIC_ önekini KULLANMA).
+- CORS'u yalnızca CORS_ORIGINS ile sınırla.
 
-Find the exact files/components responsible for:
+## Görev 4 — docker-compose sertleştirme
+- Portları yerel ağa bağla: "127.0.0.1:8000:8000", "127.0.0.1:3000:3000", "127.0.0.1:9001:9001"; postgres/redis/minio S3 portlarını host'a hiç açma.
+- Her servise healthcheck ekle (postgres: pg_isready, redis: redis-cli ping, api: curl /health) ve `depends_on: condition: service_healthy` kullan.
+- `restart: unless-stopped`, `read_only: true` (mümkünse) ve `mem_limit` ekle.
+- browser-agent'ı headless tut; sadece gerekli volume'ları mount et.
 
-* dashboard shell/layout
-* tab navigation
-* Applications tab/page/component
-* application table
-* application row/card
-* action buttons
-* shared dashboard container
-* global CSS/Tailwind configuration
+## Görev 5 — browser-agent'ı BrowserAutomationEngine + SiteAdapter olarak böl
+worker.py'yi şu yapıya ayır (davranışı değiştirme, sadece refactor):
 
-Do NOT assume filenames from this prompt.
-
-Search for existing strings/components related to:
-
-```text
-Applications
-application
-Playwright ile Doldur
-Playwright ile Gönder
-Tarayıcıda Aç
-Artifact Path
+```
+services/browser_agent/
+  engine.py            # BrowserAutomationEngine: context, retry, stop-conditions, screenshot
+  safety.py            # captcha/login-wall/MFA tespiti -> HardStop
+  adapters/
+    base.py            # SiteAdapter (ABC)
+    generic.py         # mevcut accessible-locator-first mantığı
+    workable.py
+    registry.py
+  worker.py            # sadece Redis consumer; engine'i çağırır
 ```
 
-Then trace:
+```python
+# adapters/base.py
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from playwright.async_api import Page
 
-```text
-Dashboard shell
-    ↓
-Applications tab
-    ↓
-Applications data
-    ↓
-Application table/list
-    ↓
-Application row
-    ↓
-Action buttons
+@dataclass
+class FillResult:
+    filled: list[str]
+    skipped: list[str]      # doğrulanmış profil verisi olmayan alanlar
+    needs_human: list[str]  # captcha/login/açık uçlu
+    submitted: bool = False
+
+class SiteAdapter(ABC):
+    name: str
+    @classmethod
+    @abstractmethod
+    def matches(cls, url: str) -> bool: ...
+    @abstractmethod
+    async def fill(self, page: Page, answers: dict, docs: dict) -> FillResult: ...
+    async def submit(self, page: Page) -> bool:
+        raise NotImplementedError
+
+# adapters/registry.py
+from .workable import WorkableAdapter
+from .generic import GenericAdapter
+_ADAPTERS = [WorkableAdapter, GenericAdapter]  # generic her zaman son
+def resolve(url: str):
+    return next(a for a in _ADAPTERS if a.matches(url))()
 ```
 
-Identify where width is actually being constrained.
-
----
-
-# STEP 2 — FIND THE REAL WIDTH BOTTLENECK
-
-Inspect every relevant parent element.
-
-Look specifically for combinations such as:
-
-```css
-width
-max-width
-min-width
-min-w-0
-w-full
-max-w-*
-grid
-grid-cols-*
-flex
-flex-*
-overflow-hidden
-overflow-x-hidden
-overflow-x-auto
+```python
+# safety.py
+class HardStop(Exception): ...
+CAPTCHA_SELECTORS = ["iframe[src*='recaptcha']", "iframe[src*='hcaptcha']", "[data-sitekey]"]
+async def assert_no_blockers(page):
+    for sel in CAPTCHA_SELECTORS:
+        if await page.locator(sel).count():
+            raise HardStop("captcha")
+    if await page.locator("input[type=password]").count():
+        raise HardStop("login_wall")
 ```
+HardStop yakalandığında application durumu NEEDS_HUMAN olur ve olay DB'ye yazılır; asla atlatma denenmez.
 
-Also check whether the Applications tab is inside a grid/flex child that is missing:
+## Görev 6 — Sahte form fixture'larıyla tarayıcı regresyon testleri
+- tests/fixtures/forms/{simple.html, with_captcha.html, with_login.html, custom_questions.html} oluştur.
+- pytest-playwright ile file:// üzerinden test et:
+  * simple.html: tüm doğrulanmış alanlar dolar, submitted=False.
+  * with_captcha.html / with_login.html: HardStop fırlatılır.
+  * custom_questions.html: açık uçlu/yasal sorular `needs_human` listesine gider, uydurma cevap yazılmaz.
+  * PREPARE_APPLICATION modunda submit() ASLA çağrılmaz (mock ile assert et).
 
-```css
-min-width: 0;
+## Görev 7 — Log'larda PII maskeleme
+structlog/logging filter ekle: e-posta, telefon ve profile.yaml içindeki ad/soyad değerlerini `***` ile değiştirsin. LOG_REDACT_PII=true iken aktif. Birim testi yaz.
+
+## Görev 8 — CI ve operasyon
+.github/workflows/ci.yml:
+```yaml
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ./shared pytest pytest-asyncio aiosqlite pytest-playwright ruff
+      - run: playwright install --with-deps chromium
+      - run: ruff check .
+      - run: python -m pytest -v
+      - run: cp .env.example .env && docker compose config -q
 ```
-
-or alternatively has an incorrect:
-
-```css
-max-width
-width
-grid-template-columns
+Makefile'a ekle:
+```make
+backup:
+	docker compose exec -T postgres pg_dump -U $$POSTGRES_USER $$POSTGRES_DB | gzip > backups/db-$$(date +%F).sql.gz
+restore:
+	gunzip -c $(FILE) | docker compose exec -T postgres psql -U $$POSTGRES_USER $$POSTGRES_DB
 ```
+docs/runbook.md: yedekleme, geri yükleme, MinIO bucket yedeği, anahtar rotasyonu adımları.
 
-A common failure pattern is:
+## Görev 9 — README güncellemesi
+- Phase durumunu gerçeğe uydur (Phase 6 refactor tamamlandı, Phase 10 kısmen: CI + fixtures + runbook).
+- Güvenlik bölümü: API_KEY, 127.0.0.1 bağlama, fail-fast config.
+- Varsayılan kimlik bilgisi ifadelerini kaldır.
 
-```tsx
-<div className="grid ...">
-    <main>
-        <Applications />
-    </main>
-</div>
-```
-
-where the child cannot correctly shrink/grow because the grid/flex sizing rules are wrong.
-
-Another common failure is:
-
-```tsx
-<div className="overflow-hidden">
-    <table>...</table>
-</div>
-```
-
-which clips the table instead of allowing the table container to scroll.
-
-Do not assume either pattern exists. Confirm the actual implementation first.
-
----
-
-# STEP 3 — FIX THE CONTAINER HIERARCHY
-
-The desired structure should conceptually be:
-
-```tsx
-<div className="w-full min-w-0">
-    <div className="w-full min-w-0">
-        <div className="w-full overflow-x-auto">
-            <table className="w-full min-w-[...appropriate width...]">
-                ...
-            </table>
-        </div>
-    </div>
-</div>
-```
-
-Adapt this to the project's existing styling system.
-
-The important rules are:
-
-### Dashboard/content parent
-
-The Applications content root should be equivalent to:
-
-```tsx
-className="w-full min-w-0"
-```
-
-or the project's equivalent CSS.
-
-### Table wrapper
-
-The horizontal scrolling responsibility should belong to the immediate table wrapper:
-
-```tsx
-className="w-full min-w-0 overflow-x-auto"
-```
-
-NOT the whole page.
-
-### Table
-
-Do not force the table to compress every column into unreadable widths.
-
-If the actual number of columns requires more width, use an appropriate minimum width:
-
-```tsx
-className="w-full min-w-[1100px]"
-```
-
-BUT:
-
-* determine the correct value from the actual columns;
-* do not blindly use `1100px`;
-* do not use an unnecessarily huge value such as `1600px` just to hide the problem.
-
-If the project uses CSS instead of Tailwind, implement the equivalent:
-
-```css
-.applications-table-container {
-    width: 100%;
-    min-width: 0;
-    overflow-x: auto;
-}
-
-.applications-table {
-    width: 100%;
-    min-width: 1100px;
-}
-```
-
-Again, adapt the exact value to the real table.
-
----
-
-# STEP 4 — CHECK THE TABLE COLUMNS
-
-Inspect the actual Application table.
-
-Determine all columns currently rendered.
-
-For example, if the current implementation contains things similar to:
-
-```text
-Company
-Role
-Status
-Match
-Created
-Documents
-Actions
-```
-
-calculate whether their combined minimum widths exceed the available viewport.
-
-Do NOT solve this by making text microscopic.
-
-For long values such as:
-
-* company names
-* job titles
-* URLs
-* artifact paths
-* error messages
-
-use controlled wrapping/truncation.
-
-For example:
-
-```tsx
-<div className="min-w-0">
-    <span className="block truncate">
-        {value}
-    </span>
-</div>
-```
-
-For URLs/paths that must remain readable:
-
-```tsx
-className="break-all"
-```
-
-or a controlled truncation pattern can be used where appropriate.
-
-Do NOT allow one long string to force the entire dashboard layout wider.
-
----
-
-# STEP 5 — CHECK THE ACTION COLUMN
-
-The action buttons must not cause the whole table to collapse.
-
-The action container should conceptually behave like:
-
-```tsx
-<div className="flex flex-wrap items-center gap-2 shrink-0">
-    ...
-</div>
-```
-
-Individual buttons should use:
-
-```tsx
-className="shrink-0 whitespace-nowrap"
-```
-
-where appropriate.
-
-Do NOT give every button arbitrary fixed widths.
-
-Do NOT hide buttons simply to make the table fit.
-
-All existing actions must remain available.
-
-Specifically verify these if present:
-
-```text
-Playwright ile Doldur
-Playwright ile Gönder
-Tarayıcıda Aç
-View / Download
-Retry
-Details
-```
-
-If the current UI uses icon buttons or dropdown actions, preserve the existing interaction model.
-
----
-
-# STEP 6 — IMPORTANT: CHECK WHETHER THE TAB ITSELF IS BEING SHRUNK
-
-This is the most important part.
-
-Compare the computed/rendered width of:
-
-```text
-Dashboard content
-Jobs tab
-Applications tab
-Events tab
-Settings tab
-```
-
-If possible, run the application and inspect the DOM/browser.
-
-The Applications root should not have a smaller explicit width than the other main tabs.
-
-Look for accidental rules like:
-
-```css
-width: fit-content;
-display: inline-block;
-max-width: ...
-```
-
-or Tailwind equivalents:
-
-```text
-w-fit
-max-w-*
-inline-flex
-inline-block
-```
-
-on a parent that should span the dashboard.
-
-If you find something equivalent to:
-
-```tsx
-<div className="w-fit">
-```
-
-on the Applications content root, replace it with:
-
-```tsx
-<div className="w-full min-w-0">
-```
-
-ONLY if that is actually the cause.
-
-Do not make speculative changes.
-
----
-
-# STEP 7 — DO NOT BREAK THE OTHER TABS
-
-After the fix, verify:
-
-```text
-Overview
-Jobs
-Applications
-Events
-Settings
-```
-
-Applications should use the same main content width model as the other tabs.
-
-Do not create an Applications-only special layout unless the table genuinely requires horizontal scrolling.
-
-The correct architecture is:
-
-```text
-Dashboard shell
-    └── shared content width
-          ├── Overview
-          ├── Jobs
-          ├── Applications
-          │      └── table-specific horizontal scrolling
-          ├── Events
-          └── Settings
-```
-
-NOT:
-
-```text
-Dashboard shell
-    ├── Overview
-    ├── Jobs
-    ├── Applications ← artificially narrow
-    ├── Events
-    └── Settings
-```
-
----
-
-# STEP 8 — DOCUMENT/ARTIFACT LINKS REGRESSION CHECK
-
-Because the Applications/Documents UI was modified previously, also verify that application-related artifact links still work.
-
-If an artifact is currently rendered as an internal path such as:
-
-```text
-/artifacts/...
-```
-
-or:
-
-```text
-some/internal/minio/path
-```
-
-do not expose internal storage paths directly.
-
-The UI should use the existing backend artifact endpoint/presigned URL mechanism.
-
-Do NOT redesign the storage layer in this task.
-
-Only fix this if the current Applications/Documents rendering is broken.
-
----
-
-# STEP 9 — RUN THE APPLICATION
-
-Use the existing project commands from the repository.
-
-Do not invent a new development environment.
-
-Run the frontend and required backend services using the project's existing setup.
-
-Then inspect Applications at:
-
-```text
-1440 × 900
-1280 × 800
-1024 × 768
-```
-
-If browser tooling is available, inspect the actual rendered DOM/computed dimensions.
-
-Check:
-
-### 1440×900
-
-* Applications uses the full dashboard content width.
-* Table is not artificially narrow.
-* Buttons are visible.
-* No important content is clipped.
-
-### 1280×800
-
-* Table remains usable.
-* Horizontal scrolling happens INSIDE the table container if required.
-* Page itself does not gain unwanted horizontal scrolling.
-
-### 1024×768
-
-* Responsive behavior remains usable.
-* Actions remain accessible.
-* Nothing is silently clipped.
-
----
-
-# STEP 10 — ADD A REGRESSION TEST IF THE PROJECT ALREADY HAS FRONTEND TEST INFRASTRUCTURE
-
-If frontend tests already exist, add a focused regression test for the actual bug.
-
-Test the important structural properties rather than pixel-perfect screenshots.
-
-For example, verify that the Applications root/table container has the expected full-width/min-width behavior.
-
-If Playwright/browser regression infrastructure already exists, add a small regression check such as:
-
-```ts
-await expect(applicationsRoot).toBeVisible();
-await expect(applicationsTable).toBeVisible();
-
-const rootWidth = await applicationsRoot.evaluate(
-  (el) => el.getBoundingClientRect().width
-);
-
-const viewportWidth = await page.evaluate(() => window.innerWidth);
-
-expect(rootWidth).toBeGreaterThan(viewportWidth * 0.7);
-```
-
-Adapt this to the actual dashboard layout.
-
-Do NOT add a large new testing framework solely for this task.
-
----
-
-# STEP 11 — BUILD/LINT/TEST
-
-After implementation run the existing relevant commands.
-
-At minimum:
-
-```bash
-npm run lint
-npm run build
-```
-
-if those scripts exist.
-
-Also run the project's relevant tests.
-
-If the repository uses another package manager or command, inspect `package.json` and use the existing project convention.
-
-Fix errors introduced by your changes.
-
-Do not leave the project in a broken state.
-
----
-
-# ACCEPTANCE CRITERIA
-
-The task is complete only when all of these are true:
-
-* [ ] Applications tab uses the same main content width as the other dashboard tabs.
-* [ ] Root cause of the narrow layout has been identified and fixed.
-* [ ] No arbitrary giant fixed width was added.
-* [ ] Table has controlled horizontal overflow when necessary.
-* [ ] Page-level horizontal overflow is not introduced.
-* [ ] Application action buttons remain accessible.
-* [ ] Long company/job/path values cannot break the layout.
-* [ ] Existing functionality still works.
-* [ ] Other dashboard tabs are not visually regressed.
-* [ ] Frontend lint/build passes.
-* [ ] Relevant tests pass.
-* [ ] Manual check completed at 1440×900, 1280×800 and 1024×768.
-* [ ] No git commit was created.
-* [ ] No git push was performed.
-
-## FINAL RESPONSE
-
-When finished, report:
-
-1. The exact root cause of the Applications width problem.
-2. Exact files changed.
-3. For each file, explain the specific code/layout change.
-4. Tests/build commands executed and their results.
-5. Whether any unrelated issues were found.
-6. Confirm that no commit/push was performed.
-
-Do NOT claim success without actually running the relevant checks.
+Çıktı olarak: değişen dosyaların listesi, her görev için test sonucu ve çözülemeyen/varsayım yaptığın noktaların kısa özeti ver.

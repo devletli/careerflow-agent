@@ -1,24 +1,15 @@
 import asyncio
 import logging
 import signal
-import sys
 import traceback
 from datetime import datetime, timezone
-from typing import Optional
 from uuid import UUID, uuid4
 from sqlalchemy import select
 
 from shared.config import settings
 from shared.contracts.events import (
     BaseEvent,
-    JobDiscoveredEvent,
-    JobMatchedEvent,
     JobQualifiedEvent,
-    DocumentsGeneratedEvent,
-    ApplicationAnalyzedEvent,
-    ApplicationSubmittedEvent,
-    ApplicationFailedEvent,
-    ApplicationBlockedEvent,
 )
 from shared.contracts.models import PipelineStatus, AutomationMode
 from shared.contracts.fingerprint import (
@@ -27,15 +18,13 @@ from shared.contracts.fingerprint import (
 )
 from shared.db.models import (
     Job,
-    JobMatch,
-    Document,
     Application,
     PipelineEvent,
     DeadLetterEvent,
 )
 from shared.db.session import get_session, check_db_health
 from shared.infra.redis_bus import RedisEventBus, calculate_backoff
-from .state_machine import is_valid_transition, can_advance_mode
+from .state_machine import can_advance_mode
 from .duplicate_detector import (
     find_existing_job,
     check_submission_eligibility,

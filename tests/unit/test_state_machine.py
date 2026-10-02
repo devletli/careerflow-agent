@@ -1,4 +1,3 @@
-import pytest
 from shared.contracts.models import PipelineStatus, AutomationMode
 from services.orchestrator.app.state_machine import is_valid_transition, can_advance_mode
 

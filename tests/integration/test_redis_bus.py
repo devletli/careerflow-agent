@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 from shared.contracts.events import JobDiscoveredEvent

@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import select
 
 from shared.config import settings
-from shared.contracts.events import BaseEvent, JobMatchedEvent, JobQualifiedEvent
+from shared.contracts.events import JobMatchedEvent, JobQualifiedEvent
 from shared.contracts.models import PipelineStatus
 from shared.db.models import Job, JobMatch
 from shared.db.session import get_session, check_db_health

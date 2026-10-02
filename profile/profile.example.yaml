@@ -1,0 +1,54 @@
+# EXAMPLE profile — copy to profile.yaml and fill in your own verified facts.
+# This file contains only placeholder data. The real profile.yaml is git-ignored.
+candidate:
+  name: "Jane Example"
+  email: "jane.example@example.com"
+  phone: "+49 170 0000000"
+  location:
+    city: "Berlin"
+    country: "Germany"
+    preferred_regions:
+      - "Berlin"
+      - "Germany"
+      - "Remote EU"
+
+  website: "https://example.com"
+
+  positioning:
+    primary:
+      - "DevOps Engineer"
+      - "Platform Engineer"
+    secondary:
+      - "AI Automation Engineer"
+      - "Test Automation Engineer"
+
+  experience_years: 8
+
+  languages:
+    German: "B2"
+    English: "C1"
+
+  education:
+    - degree: "Computer Science"
+      institution: "Example University"
+      language: "English"
+
+  certifications:
+    - "Example Certification"
+
+  skills:
+    - DevOps
+    - Docker
+    - Kubernetes
+    - CI/CD
+    - Git
+    - Terraform
+    - Python
+
+  work_authorization:
+    country: "Germany"
+    verified: false
+
+  facts:
+    source_of_truth: "profile/profile.yaml"
+    rule: "Do not invent candidate facts."

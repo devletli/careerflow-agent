@@ -3,13 +3,15 @@ from io import BytesIO
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Depends, HTTPException, Query, status as http_status
-from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select, desc
-from typing import List, Optional
+from typing import Optional
 import logging
 
+from app.security import ApiKey
 from shared.config import settings
 from shared.db.session import get_db_session, check_db_health
 from shared.db.models import (
@@ -35,6 +37,13 @@ app = FastAPI(
 
 redis_bus = RedisEventBus()
 minio_client = MinIOClient()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "X-API-Key"],
+)
 CONTROL_ACTIONS = {
     "discover",
     "match",
@@ -62,17 +71,20 @@ async def health():
     overall = db_healthy and redis_healthy and minio_healthy
     status_code = 200 if overall else 503
 
-    return {
-        "status": "ok" if overall else "degraded",
-        "dependencies": {
-            "postgres": db_healthy,
-            "redis": redis_healthy,
-            "minio": minio_healthy,
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": "ok" if overall else "degraded",
+            "dependencies": {
+                "postgres": db_healthy,
+                "redis": redis_healthy,
+                "minio": minio_healthy,
+            },
         },
-    }
+    )
 
 
-@app.get("/api/v1/status")
+@app.get("/api/v1/status", dependencies=[ApiKey])
 def status():
     return {
         "service": "api",
@@ -85,7 +97,7 @@ def status():
     }
 
 
-@app.post("/api/v1/pipeline/actions", status_code=http_status.HTTP_202_ACCEPTED)
+@app.post("/api/v1/pipeline/actions", status_code=http_status.HTTP_202_ACCEPTED, dependencies=[ApiKey])
 async def run_pipeline_action(
     request: PipelineControlRequest,
     session: AsyncSession = Depends(get_db_session),
@@ -145,7 +157,7 @@ async def run_pipeline_action(
     }
 
 
-@app.get("/api/v1/jobs")
+@app.get("/api/v1/jobs", dependencies=[ApiKey])
 async def list_jobs(
     limit: int = Query(default=100, le=100),
     offset: int = 0,
@@ -206,7 +218,7 @@ async def list_jobs(
     ]
 
 
-@app.get("/api/v1/applications")
+@app.get("/api/v1/applications", dependencies=[ApiKey])
 async def list_applications(
     limit: int = Query(default=100, le=100),
     offset: int = 0,
@@ -241,7 +253,7 @@ async def list_applications(
     ]
 
 
-@app.get("/api/v1/applications/{application_id}/desktop-context")
+@app.get("/api/v1/applications/{application_id}/desktop-context", dependencies=[ApiKey])
 async def get_desktop_application_context(
     application_id: UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -310,7 +322,7 @@ async def get_desktop_application_context(
     }
 
 
-@app.get("/api/v1/documents")
+@app.get("/api/v1/documents", dependencies=[ApiKey])
 async def list_documents(
     limit: int = Query(default=100, le=100),
     session: AsyncSession = Depends(get_db_session),
@@ -335,7 +347,7 @@ async def list_documents(
     ]
 
 
-@app.get("/api/v1/documents/{document_id}/download")
+@app.get("/api/v1/documents/{document_id}/download", dependencies=[ApiKey])
 async def download_document(
     document_id: UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -372,7 +384,7 @@ async def download_document(
     )
 
 
-@app.get("/api/v1/events")
+@app.get("/api/v1/events", dependencies=[ApiKey])
 async def list_events(
     limit: int = Query(default=50, le=200),
     session: AsyncSession = Depends(get_db_session),

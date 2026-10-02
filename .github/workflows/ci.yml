@@ -19,16 +19,19 @@ jobs:
       - name: Install backend dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ./shared pytest pytest-asyncio aiosqlite httpx beautifulsoup4 playwright
+          pip install -e ./shared pytest pytest-asyncio aiosqlite pytest-playwright ruff httpx beautifulsoup4 playwright
 
       - name: Install Chromium for browser regression tests
         run: python -m playwright install --with-deps chromium
+
+      - name: Lint
+        run: ruff check .
 
       - name: Backend tests (unit + integration + matching eval)
         run: python -m pytest -v
 
       - name: Validate Docker Compose configuration
-        run: docker compose config --quiet
+        run: cp .env.example .env && docker compose config --quiet
 
   frontend:
     runs-on: ubuntu-latest

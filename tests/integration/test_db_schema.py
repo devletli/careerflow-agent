@@ -1,23 +1,15 @@
 import pytest
 import pytest_asyncio
 from uuid import uuid4
-from datetime import datetime, timezone
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.exc import IntegrityError
 
 from shared.db.models import (
     Base,
-    Profile,
     Job,
-    JobRequirement,
-    JobMatch,
     Document,
     Application,
-    ApplicationQuestion,
-    ApplicationAnswer,
     PipelineEvent,
-    DeadLetterEvent,
 )
 
 

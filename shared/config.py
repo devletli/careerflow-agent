@@ -1,6 +1,9 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import model_validator
 from typing import Optional
+
+
+WEAK_SECRETS = {"change_me", "minioadmin", ""}
 
 
 class Settings(BaseSettings):
@@ -31,9 +34,12 @@ class Settings(BaseSettings):
     # API / Frontend
     API_PORT: int = 8000
     FRONTEND_PORT: int = 3000
+    API_KEY: str = ""
+    CORS_ORIGINS: str = "http://localhost:3000"
+    ENV: str = "dev"  # dev | prod
 
     # Pipeline automation
-    MIN_MATCH_SCORE: float = 95.0
+    MIN_MATCH_SCORE: float = 80.0
     AUTOMATION_MODE: str = "PREPARE_APPLICATION"
     AUTO_SUBMIT: bool = False
     MAX_APPLICATIONS_PER_DAY: int = 20
@@ -54,6 +60,37 @@ class Settings(BaseSettings):
 
     # Logging
     LOG_LEVEL: str = "INFO"
+    LOG_REDACT_PII: bool = True
+
+    @model_validator(mode="after")
+    def _check(self):
+        if self.AUTOMATION_MODE not in {"PREPARE_APPLICATION", "FULL_AUTO"}:
+            raise ValueError("AUTOMATION_MODE invalid")
+        if self.AUTO_SUBMIT and self.AUTOMATION_MODE != "FULL_AUTO":
+            raise ValueError("AUTO_SUBMIT=true requires AUTOMATION_MODE=FULL_AUTO")
+        if self.AUTOMATION_MODE == "FULL_AUTO" and not self.AUTO_SUBMIT:
+            raise ValueError("FULL_AUTO requires explicit AUTO_SUBMIT=true")
+        if not 0 <= self.MIN_MATCH_SCORE <= 100:
+            raise ValueError("MIN_MATCH_SCORE must be 0-100")
+        if self.MAX_APPLICATIONS_PER_HOUR > self.MAX_APPLICATIONS_PER_DAY:
+            raise ValueError("hourly limit cannot exceed daily limit")
+        if self.ENV == "prod":
+            if (self.POSTGRES_PASSWORD or "").lower() in WEAK_SECRETS:
+                raise ValueError("weak default secrets are not allowed in prod")
+            if (self.MINIO_SECRET_KEY or "").lower() in WEAK_SECRETS:
+                raise ValueError("weak default secrets are not allowed in prod")
+            if len(self.API_KEY or "") < 24:
+                raise ValueError("API_KEY must be >= 24 chars in prod")
+        return self
 
 
 settings = Settings()
+
+# Attach PII redaction to the root logger for every service importing this
+# module. The filter itself honors settings.LOG_REDACT_PII dynamically.
+try:
+    from shared.infra.pii import install_pii_redaction
+
+    install_pii_redaction()
+except Exception:
+    pass

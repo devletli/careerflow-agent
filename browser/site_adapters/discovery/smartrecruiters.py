@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 import httpx
 
 from browser.site_adapters.discovery.base import JobSourceAdapter
@@ -50,7 +50,6 @@ class SmartRecruitersAdapter(JobSourceAdapter):
                         city = loc_obj.get("city", "")
                         country = loc_obj.get("country", "")
                         loc_str = f"{city}, {country}".strip(", ")
-                        workplace = item.get("typeOfEmployment", {}).get("label", "")
 
                         app_url = f"https://jobs.smartrecruiters.com/{company}/{job_id}"
                         job_fp = compute_job_fingerprint(company_name, title, app_url)

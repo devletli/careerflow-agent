@@ -52,11 +52,11 @@ The current architecture is retained for now. For a single-user deployment, futu
 - [x] **Phase 3 — Matching Engine**: deterministic requirement extraction + semantic scoring + LLM explanation, configurable weighted score and threshold (`MIN_MATCH_SCORE`).
 - [x] **Phase 4 — Document Generation**: job-specific CV/cover-letter generation, language detection, MinIO artifact storage.
 - [x] **Phase 5 — Form Analysis**: application form/question inspection and classification (legal/work-authorization, preference, open-ended).
-- [x] **Phase 6 — Generic Browser Automation**: Playwright-based `browser-agent` with accessible-locator-first form filling, CAPTCHA/login-wall/MFA detection with hard stop, file upload support. *(Still a single worker module rather than fully split `BrowserAutomationEngine` + per-site `SiteAdapter` classes — see Remaining Risks.)*
+- [x] **Phase 6 — Generic Browser Automation**: Playwright-based `browser-agent` with accessible-locator-first form filling, CAPTCHA/login-wall/MFA detection with hard stop, file upload support, structured as a `BrowserAutomationEngine` core with per-site `SiteAdapter` classes (`workable`, `generic` fallback) plus a dedicated `safety` module.
 - [x] **Phase 7 — Pipeline Automation & Rate Limiting**: event-driven orchestrator with bounded exponential backoff, dead-letter routing, duplicate/eligibility checks, and daily/hourly rate limits before any submission.
 - [x] **Phase 8 — Frontend Dashboard**: Next.js dashboard (Overview, Jobs, Applications, Events, Settings) served at `http://localhost:3000`, proxied to the API through Next.js rewrites.
 - [ ] **Phase 9 — Additional ATS Connectors**: Greenhouse/Lever/Ashby/SmartRecruiters discovery connectors exist; a dedicated `generic` fallback adapter is present but application-side (submission) adapters remain Workable/BrowserAgent-generic only.
-- [x] **Phase 10 — Reliability Baseline**: matching evaluation dataset + automated eval, local browser regression fixture (Playwright fill-without-submit), minimal GitHub Actions CI, English dashboard UI, and an API smoke/performance regression test. Production-scale load testing and backup/restore runbooks remain open (see Roadmap).
+- [x] **Phase 10 — Reliability Baseline**: matching evaluation dataset + automated eval, local browser regression fixture (Playwright fill-without-submit), minimal GitHub Actions CI, English dashboard UI, an API smoke/performance regression test, and a backup/restore runbook (`docs/runbook.md`). Production-scale load testing remains open (see Roadmap).
 
 ## Roadmap
 
@@ -64,7 +64,7 @@ Completed: Phases 0–8 and the Phase 10 reliability baseline above.
 
 Current: manual pipeline operation via the dashboard; German-market discovery adapters (Bundesagentur, Arbeitnow) in regular use.
 
-Future (not started): additional browser/site adapters, larger evaluation dataset, production load testing, backup/restore runbooks, architecture simplification, observability.
+Future (not started): additional browser/site adapters, larger evaluation dataset, production load testing, architecture simplification, observability.
 
 ## Quick Start
 
@@ -79,9 +79,18 @@ docker compose up --build
 
 5. API: `http://localhost:8000` (`/health`, `/api/v1/status`, `/api/v1/jobs`, `/api/v1/applications`, `/api/v1/events`)
 6. Frontend dashboard: `http://localhost:3000` (Overview / Jobs / Applications / Events / Settings tabs, auto-refreshing every 10s). The Overview tab provides confirmed actions for discovery, matching, document generation, form analysis, and form filling.
-7. MinIO Console: `http://localhost:9001` (Credentials: minioadmin / minioadmin)
+7. MinIO Console: `http://127.0.0.1:9001` (credentials from `.env`: `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`)
 
 > **Note:** MinIO removed the `minio/minio` image from Docker Hub, so `docker-compose.yml` pins `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z` instead.
+
+## Security
+
+- Copy `.env.example` to `.env` and replace every `CHANGE_ME_…` placeholder with strong values before starting the stack.
+- All API routes except `/health` require the shared `API_KEY` (`X-API-Key` header). The dashboard forwards it server-side via Next.js middleware, so the key never reaches the browser.
+- Public ports bind to `127.0.0.1` only; PostgreSQL, Redis, and MinIO's S3 port are not published to the host (use `docker compose exec` for direct access).
+- Startup fail-fast: invalid automation settings or weak default secrets (in `ENV=prod`) abort services immediately instead of running misconfigured.
+- With `LOG_REDACT_PII=true`, e-mail addresses, phone numbers, and the candidate name are masked in logs.
+- Backup/restore procedure: `docs/runbook.md` (including API key rotation).
 
 ## Running Tests
 
@@ -91,6 +100,12 @@ Run the complete unit and integration test suite (pure-Python, no Docker service
 python -m venv .venv
 .venv\Scripts\pip install -e ./shared pytest pytest-asyncio aiosqlite
 .venv\Scripts\python -m pytest -v
+```
+
+Lint (must pass for CI):
+
+```bash
+python -m ruff check .
 ```
 
 Run the matching evaluation (offline, uses the production matcher, no LLM key needed):

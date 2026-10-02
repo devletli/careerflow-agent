@@ -50,7 +50,10 @@ profile/*.txt
 artifacts/
 downloads/
 browser-state/
+browser-trace/
 browser-traces/
+cookies/
+*.pdf
 storage_state.json
 playwright-report/
 test-results/

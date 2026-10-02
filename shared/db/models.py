@@ -1,6 +1,5 @@
 from datetime import datetime, timezone
 from uuid import uuid4
-import sqlalchemy as sa
 from sqlalchemy import (
     Column,
     String,

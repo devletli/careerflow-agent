@@ -1,0 +1,31 @@
+# EXAMPLE preferences — copy to preferences.yaml and adjust to your situation.
+minimum_match_score: 80
+
+preferred_roles:
+  - DevOps Engineer
+  - Platform Engineer
+  - AI Automation Engineer
+  - Test Automation Engineer
+
+excluded_roles:
+  - Junior Developer
+  - Manual Tester
+  - Pure Sales
+  - Pure Customer Support
+
+locations:
+  - Berlin
+  - Germany
+  - Remote
+
+remote: true
+relocation: false
+
+employment_types:
+  - permanent
+  - contract
+  - remote
+
+cv_languages:
+  - German
+  - English

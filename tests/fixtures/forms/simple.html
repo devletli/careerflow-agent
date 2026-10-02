@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture: simple application form</title></head>
+<body>
+  <h1>Apply: DevOps Engineer</h1>
+  <form id="application-form" onsubmit="window.__submitted = true; return false;">
+    <label for="first_name">First Name</label>
+    <input type="text" id="first_name" name="first_name" required>
+    <label for="last_name">Last Name</label>
+    <input type="text" id="last_name" name="last_name" required>
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" required>
+    <label for="phone">Phone</label>
+    <input type="tel" id="phone" name="phone">
+    <label for="cover_letter_text">Cover Letter</label>
+    <textarea id="cover_letter_text" name="cover_letter_text"></textarea>
+    <label for="resume">Resume / CV (PDF)</label>
+    <input type="file" id="resume" name="resume" accept=".pdf">
+    <button type="submit" id="submit-btn">Submit application</button>
+  </form>
+  <script>window.__submitted = false;</script>
+</body>
+</html>

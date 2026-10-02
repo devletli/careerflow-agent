@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture: form behind login wall</title></head>
+<body>
+  <h1>Please log in to continue your application</h1>
+  <form id="login-form" onsubmit="window.__submitted = true; return false;">
+    <label for="username">Username</label>
+    <input type="text" id="username" name="username">
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" required>
+    <button type="submit" id="submit-btn">Sign in to continue</button>
+  </form>
+  <script>window.__submitted = false;</script>
+</body>
+</html>

@@ -1,6 +1,4 @@
-import json
 import logging
-import re
 from typing import Any, Dict, List, Optional, Tuple
 from bs4 import BeautifulSoup
 
@@ -68,7 +66,6 @@ class FormAnalyzer:
         html: str,
     ) -> Tuple[List[ApplicationField], List[ApplicationQuestionSchema]]:
         """Extracts normalized form fields and screening questions."""
-        ats = self.detect_ats(url, html)
         soup = BeautifulSoup(html, "html.parser")
 
         fields: List[ApplicationField] = []

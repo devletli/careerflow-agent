@@ -1,6 +1,4 @@
-import pytest
-from unittest.mock import MagicMock, patch
-import io
+from unittest.mock import MagicMock
 
 from shared.infra.storage import MinIOClient
 

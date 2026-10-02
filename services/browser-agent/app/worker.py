@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import signal
-import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
@@ -12,7 +11,6 @@ from shared.contracts.events import (
     ApplicationSubmittedEvent,
     ApplicationFailedEvent,
     ApplicationBlockedEvent,
-    BaseEvent,
 )
 from shared.contracts.models import PipelineStatus
 from shared.db.models import (
@@ -25,6 +23,8 @@ from shared.db.models import (
 from shared.db.session import get_session, check_db_health
 from shared.infra.redis_bus import RedisEventBus
 from shared.profile.loader import load_canonical_profile, CanonicalProfile
+
+from app.engine import BrowserAutomationEngine
 
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
@@ -51,6 +51,7 @@ class BrowserApplicationAgent:
     def __init__(self, profile: CanonicalProfile, bus: RedisEventBus):
         self.profile = profile
         self.bus = bus
+        self.engine = BrowserAutomationEngine()
 
     async def process_application(self, app_id: UUID, submit: bool = False) -> str:
         """
@@ -210,15 +211,9 @@ class BrowserApplicationAgent:
         submit: bool = False,
     ) -> str:
         """
-        Uses Playwright to navigate to the application page and fill form fields.
-        Returns: FILLED | BLOCKED | FAILED
+        Delegates navigation/fill/submit to the BrowserAutomationEngine with
+        the SiteAdapter resolved for this URL. Returns: FILLED | SUBMITTED | BLOCKED | FAILED
         """
-        try:
-            from playwright.async_api import async_playwright, TimeoutError as PWTimeoutError
-        except ImportError:
-            logger.error("Playwright not installed. Cannot fill forms.")
-            return "FAILED"
-
         # Build answer lookup by question key
         q_by_id = {q.id: q for q in questions}
         answer_map: Dict[str, Any] = {}
@@ -238,127 +233,17 @@ class BrowserApplicationAgent:
         }
         answer_map.update({k: v for k, v in profile_fills.items() if k not in answer_map})
 
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(
-                headless=settings.BROWSER_HEADLESS,
-                args=["--no-sandbox", "--disable-dev-shm-usage"],
-            )
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                viewport={"width": 1280, "height": 900},
-            )
-            page = await context.new_page()
+        async def mark_submitting() -> None:
+            await self._mark_application(app_id, PipelineStatus.SUBMITTING.value)
 
-            try:
-                logger.info(f"Navigating to {application_url}")
-                await page.goto(application_url, wait_until="networkidle", timeout=30000)
-
-                # CAPTCHA / security challenge detection
-                page_text = (await page.content()).lower()
-                captcha_indicators = [
-                    "captcha", "recaptcha", "hcaptcha", "security check",
-                    "prove you're human", "robot", "cloudflare", "access denied",
-                ]
-                if any(ind in page_text for ind in captcha_indicators):
-                    logger.warning(f"CAPTCHA/security challenge detected on {application_url}")
-                    await browser.close()
-                    return "BLOCKED"
-
-                # Login wall detection
-                login_indicators = ["sign in to continue", "please log in", "create an account to apply"]
-                if any(ind in page_text for ind in login_indicators):
-                    logger.warning(f"Login wall detected on {application_url}")
-                    await browser.close()
-                    return "BLOCKED"
-
-                # Fill text/email/phone inputs
-                inputs = await page.query_selector_all("input[type='text'], input[type='email'], input[type='tel'], input:not([type])")
-                for inp in inputs:
-                    try:
-                        name = await inp.get_attribute("name") or ""
-                        inp_id = await inp.get_attribute("id") or ""
-                        placeholder = await inp.get_attribute("placeholder") or ""
-                        key = (name or inp_id or placeholder).lower().replace("-", "_").replace(" ", "_")
-
-                        if not key:
-                            continue
-
-                        # Find value from answer_map
-                        value = None
-                        for map_key, map_val in answer_map.items():
-                            if map_key.lower() in key or key in map_key.lower():
-                                value = map_val
-                                break
-
-                        if value is not None and str(value).strip():
-                            is_visible = await inp.is_visible()
-                            is_enabled = await inp.is_enabled()
-                            if is_visible and is_enabled:
-                                await inp.click()
-                                await inp.fill(str(value))
-                                logger.debug(f"Filled input '{key}' = '{str(value)[:30]}'")
-                    except Exception as field_err:
-                        logger.debug(f"Skipping field fill error: {field_err}")
-
-                # Fill textarea fields
-                textareas = await page.query_selector_all("textarea")
-                for ta in textareas:
-                    try:
-                        name = await ta.get_attribute("name") or ""
-                        ta_id = await ta.get_attribute("id") or ""
-                        key = (name or ta_id).lower().replace("-", "_")
-                        value = answer_map.get(key) or answer_map.get(name.lower())
-                        if value and await ta.is_visible():
-                            await ta.fill(str(value))
-                    except Exception:
-                        pass
-
-                # Take a screenshot for audit trail
-                screenshot_path = f"/app/browser-traces/app_{app_id}_filled.png"
-                try:
-                    await page.screenshot(path=screenshot_path, full_page=True)
-                    logger.info(f"Screenshot saved: {screenshot_path}")
-                except Exception as ss_err:
-                    logger.debug(f"Screenshot failed (non-fatal): {ss_err}")
-
-                if submit:
-                    await self._mark_application(app_id, PipelineStatus.SUBMITTING.value)
-                    if not await self._submit_application(page, app_id):
-                        return "FAILED"
-                    return "SUBMITTED"
-
-                return "FILLED"
-
-            except Exception as nav_err:
-                logger.error(f"Navigation/fill error: {nav_err}")
-                return "FAILED"
-            finally:
-                await browser.close()
-
-    async def _submit_application(self, page: Any, app_id: UUID) -> bool:
-        """
-        Submits the filled application by clicking the submit button.
-        Only called when AUTO_SUBMIT=true and FULL_AUTO mode.
-        """
-        submit_selectors = [
-            "button[type='submit']",
-            "input[type='submit']",
-            "button:has-text('Submit')",
-            "button:has-text('Apply')",
-            "button:has-text('Send Application')",
-        ]
-        try:
-            for selector in submit_selectors:
-                button = await page.query_selector(selector)
-                if button and await button.is_visible() and await button.is_enabled():
-                    await button.click()
-                    await page.wait_for_timeout(3000)
-                    logger.info(f"Submit clicked for application {app_id}")
-                    return True
-            logger.warning(f"No submit button found for application {app_id}")
-        except Exception as exc:
-            logger.error(f"Submit failed for application {app_id}: {exc}")
-        return False
+        result_status, _ = await self.engine.run_fill(
+            application_url=application_url,
+            app_id=app_id,
+            answers=answer_map,
+            submit=submit,
+            on_submitting=mark_submitting,
+        )
+        return result_status
 
     async def _mark_application(
         self,

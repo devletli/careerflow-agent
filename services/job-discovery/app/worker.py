@@ -2,11 +2,10 @@ import argparse
 import asyncio
 import logging
 import time
-from typing import List
 from uuid import uuid4
 
 from shared.config import settings
-from shared.contracts.events import BaseEvent, JobDiscoveredEvent, JobNormalizedEvent
+from shared.contracts.events import JobDiscoveredEvent, JobNormalizedEvent
 from shared.contracts.models import PipelineStatus
 from shared.db.models import Job
 from shared.db.session import get_session, check_db_health
@@ -39,7 +38,6 @@ async def find_existing_job(session, source: str, source_job_id: str, job_finger
     ]
     if job_fingerprint:
         conditions.append(Job.job_fingerprint == job_fingerprint)
-    from sqlalchemy import or_
     stmt = select(Job).where(or_(*conditions))
     result = await session.execute(stmt)
     return result.scalars().first()

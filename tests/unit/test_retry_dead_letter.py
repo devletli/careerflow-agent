@@ -1,4 +1,3 @@
-import pytest
 from shared.infra.redis_bus import calculate_backoff
 
 

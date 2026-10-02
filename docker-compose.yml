@@ -2,14 +2,14 @@ services:
 
   postgres:
     image: postgres:17
+    restart: unless-stopped
+    mem_limit: 1g
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-jobagent}
       POSTGRES_USER: ${POSTGRES_USER:-jobagent}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jobagent} -d ${POSTGRES_DB:-jobagent}"]
       interval: 5s
@@ -18,10 +18,10 @@ services:
 
   redis:
     image: redis:8-alpine
+    restart: unless-stopped
+    mem_limit: 256m
     volumes:
       - redis_data:/data
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -30,6 +30,8 @@ services:
 
   minio:
     image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    restart: unless-stopped
+    mem_limit: 512m
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
@@ -37,8 +39,7 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9001:9001"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
       interval: 10s
@@ -60,6 +61,8 @@ services:
     build:
       context: .
       dockerfile: services/api/Dockerfile
+    restart: unless-stopped
+    mem_limit: 512m
     env_file: .env
     depends_on:
       postgres:
@@ -69,7 +72,13 @@ services:
       init-db:
         condition: service_completed_successfully
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status == 200 else 1)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
     volumes:
       - ./profile:/app/profile:ro
       - ./artifacts:/app/artifacts
@@ -78,6 +87,8 @@ services:
     build:
       context: .
       dockerfile: services/orchestrator/Dockerfile
+    restart: unless-stopped
+    mem_limit: 512m
     env_file: .env
     depends_on:
       postgres:
@@ -91,6 +102,8 @@ services:
     build:
       context: .
       dockerfile: services/job-discovery/Dockerfile
+    restart: unless-stopped
+    mem_limit: 512m
     env_file: .env
     depends_on:
       postgres:
@@ -104,6 +117,8 @@ services:
     build:
       context: .
       dockerfile: services/job-matching/Dockerfile
+    restart: unless-stopped
+    mem_limit: 512m
     env_file: .env
     depends_on:
       postgres:
@@ -117,6 +132,8 @@ services:
     build:
       context: .
       dockerfile: services/cv-generator/Dockerfile
+    restart: unless-stopped
+    mem_limit: 512m
     env_file: .env
     depends_on:
       postgres:
@@ -135,6 +152,8 @@ services:
     build:
       context: .
       dockerfile: services/application-analyzer/Dockerfile
+    restart: unless-stopped
+    mem_limit: 512m
     env_file: .env
     depends_on:
       postgres:
@@ -148,6 +167,8 @@ services:
     build:
       context: .
       dockerfile: services/browser-agent/Dockerfile
+    restart: unless-stopped
+    mem_limit: 2g
     env_file: .env
     depends_on:
       postgres:
@@ -166,12 +187,16 @@ services:
     build:
       context: services/frontend
       dockerfile: Dockerfile
+    restart: unless-stopped
+    mem_limit: 512m
     environment:
       API_INTERNAL_URL: http://api:8000
+      API_KEY: ${API_KEY:-}
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
 
 volumes:
   postgres_data:

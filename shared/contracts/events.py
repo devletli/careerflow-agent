@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 import json
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Type
 from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field
 

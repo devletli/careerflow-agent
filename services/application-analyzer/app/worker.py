@@ -8,7 +8,6 @@ from sqlalchemy import select
 
 from shared.config import settings
 from shared.contracts.events import (
-    BaseEvent,
     ApplicationAnalyzedEvent,
     ApplicationReadyEvent,
 )

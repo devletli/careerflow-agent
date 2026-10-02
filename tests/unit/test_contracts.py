@@ -1,13 +1,10 @@
-import pytest
 from uuid import uuid4
 from shared.contracts.models import (
     PipelineStatus,
-    AutomationMode,
     QuestionClassification,
     QualificationStatus,
     NormalizedJob,
     JobMatchResult,
-    GeneratedDocument,
     ApplicationQuestionSchema,
 )
 from shared.contracts.events import (

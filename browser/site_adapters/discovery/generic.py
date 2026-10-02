@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 import httpx
 
 from browser.site_adapters.discovery.base import JobSourceAdapter

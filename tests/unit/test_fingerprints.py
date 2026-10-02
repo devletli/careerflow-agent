@@ -1,4 +1,3 @@
-import pytest
 from shared.contracts.fingerprint import (
     canonicalize_url,
     compute_job_fingerprint,

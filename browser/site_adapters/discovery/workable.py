@@ -1,11 +1,10 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 import httpx
-from bs4 import BeautifulSoup
 
 from browser.site_adapters.discovery.base import JobSourceAdapter
 from shared.contracts.models import NormalizedJob
-from shared.contracts.fingerprint import canonicalize_url, compute_job_fingerprint
+from shared.contracts.fingerprint import compute_job_fingerprint
 
 logger = logging.getLogger(__name__)
 

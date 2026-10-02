@@ -4,19 +4,13 @@ from uuid import uuid4
 from unittest.mock import AsyncMock, patch
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
-from shared.db.models import Base, Job, Application, PipelineEvent
+from shared.db.models import Base, Job, Application
 from shared.contracts.events import (
     JobDiscoveredEvent,
-    JobMatchedEvent,
-    JobQualifiedEvent,
-    DocumentsGeneratedEvent,
-    ApplicationAnalyzedEvent,
-    ApplicationSubmittedEvent,
 )
 from shared.contracts.models import PipelineStatus
 from services.orchestrator.app.duplicate_detector import (
     find_existing_job,
-    find_existing_application,
     check_submission_eligibility,
 )
 from services.orchestrator.app.worker import OrchestratorWorker
