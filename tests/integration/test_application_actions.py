@@ -213,3 +213,33 @@ def test_manual_rejects_non_public_urls(client):
     ):
         r = client.post("/api/v1/applications/manual", json={"url": url})
         assert r.status_code == 422, (url, r.text)
+
+
+def test_pipeline_action_rate_limited(client, seed, monkeypatch):
+    from shared.infra.rate_limit import RateLimited
+
+    async def deny(action, redis):
+        raise RateLimited(action=action, retry_after_seconds=60)
+
+    monkeypatch.setattr(_api, "check_action_limit", deny)
+    r = client.post(
+        "/api/v1/pipeline/actions",
+        json={"action": "discover", "confirmed": False},
+    )
+    assert r.status_code == 429, r.text
+    assert r.headers.get("Retry-After") == "60"
+
+
+def test_pipeline_action_allowed_when_limiter_passes(client, seed, monkeypatch):
+    async def allow(action, redis):
+        return None
+
+    monkeypatch.setattr(_api, "check_action_limit", allow)
+    with patch.object(
+        _api.redis_bus, "publish", new=AsyncMock(return_value="msg-1")
+    ):
+        r = client.post(
+            "/api/v1/pipeline/actions",
+            json={"action": "discover", "confirmed": False},
+        )
+    assert r.status_code == 202, r.text

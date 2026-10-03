@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import logging
+import signal
 from uuid import UUID, uuid4
 from sqlalchemy import select
 
@@ -214,6 +215,15 @@ async def main():
     args = parser.parse_args()
 
     worker = CVGeneratorWorker()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(worker.stop()))
+        except NotImplementedError:
+            # Windows does not support add_signal_handler for all signals
+            pass
+
     try:
         await worker.start(once=args.once)
     except (KeyboardInterrupt, asyncio.CancelledError):

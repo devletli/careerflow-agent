@@ -194,6 +194,10 @@ class Application(Base):
         "ApplicationAnswer", back_populates="application", cascade="all, delete-orphan"
     )
 
+    __table_args__ = (
+        Index("ix_applications_status_updated", "status", "updated_at"),
+    )
+
 
 class ApplicationQuestion(Base):
     __tablename__ = "application_questions"
@@ -300,6 +304,7 @@ class PipelineEvent(Base):
 
     __table_args__ = (
         Index("ix_pipeline_events_type_created", "event_type", "created_at"),
+        Index("ix_pipeline_events_created_at", "created_at"),
     )
 
 

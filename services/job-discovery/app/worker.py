@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import logging
+import signal
 import time
 from uuid import uuid4
 
@@ -208,6 +209,15 @@ async def main():
     args = parser.parse_args()
 
     worker = JobDiscoveryWorker()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(worker.stop()))
+        except NotImplementedError:
+            # Windows does not support add_signal_handler for all signals
+            pass
+
     try:
         await worker.start(once=args.once, interval_seconds=args.interval)
     except (KeyboardInterrupt, asyncio.CancelledError):

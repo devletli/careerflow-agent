@@ -25,6 +25,7 @@ from shared.db.models import (
     JobMatch,
     PipelineEvent,
 )
+from shared.infra.rate_limit import RateLimited, check_action_limit
 from shared.infra.redis_bus import RedisEventBus
 from shared.infra.storage import MinIOClient
 from shared.contracts.events import BaseEvent
@@ -135,6 +136,15 @@ async def run_pipeline_action(
                 status_code=http_status.HTTP_409_CONFLICT,
                 detail="Application has already been submitted.",
             )
+
+    try:
+        await check_action_limit(request.action, await redis_bus.get_redis())
+    except RateLimited as exc:
+        raise HTTPException(
+            status_code=http_status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Rate limit exceeded for {exc.action}; retry later.",
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
 
     correlation_id = f"control-{uuid4().hex[:12]}"
     event = BaseEvent(

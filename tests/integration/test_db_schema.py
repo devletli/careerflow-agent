@@ -147,6 +147,44 @@ async def test_document_unique_constraint(test_session: AsyncSession):
     await test_session.rollback()
 
 
+def test_dashboard_query_indexes_exist():
+    """yama.md Faz 5-C: dashboard hot-path indexes must exist in metadata."""
+    app_indexes = {ix.name for ix in Application.__table__.indexes}
+    event_indexes = {ix.name for ix in PipelineEvent.__table__.indexes}
+    assert "ix_applications_status_updated" in app_indexes
+    assert "ix_pipeline_events_created_at" in event_indexes
+
+
+def test_dashboard_queries_use_indexes():
+    """EXPLAIN QUERY PLAN must show the new indexes serving dashboard shapes."""
+    from sqlalchemy import create_engine, text
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with engine.connect() as conn:
+        plan_app = " ".join(
+            row[3]
+            for row in conn.execute(
+                text(
+                    "EXPLAIN QUERY PLAN SELECT id FROM applications "
+                    "WHERE status = 'READY_TO_APPLY' ORDER BY updated_at LIMIT 10"
+                )
+            ).all()
+        )
+        assert "ix_applications_status_updated" in plan_app, plan_app
+        plan_ev = " ".join(
+            row[3]
+            for row in conn.execute(
+                text(
+                    "EXPLAIN QUERY PLAN SELECT id FROM pipeline_events "
+                    "ORDER BY created_at DESC LIMIT 50"
+                )
+            ).all()
+        )
+        assert "ix_pipeline_events_created_at" in plan_ev, plan_ev
+    engine.dispose()
+
+
 @pytest.mark.asyncio
 async def test_pipeline_event_creation(test_session: AsyncSession):
     event_id = uuid4()
