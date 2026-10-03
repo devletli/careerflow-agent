@@ -38,7 +38,7 @@ class RedisEventBus:
             )
         return self._redis
 
-    async def close(self):
+    async def close(self) -> None:
         if self._redis is not None:
             await self._redis.aclose()
             self._redis = None
@@ -60,7 +60,7 @@ class RedisEventBus:
         logger.debug(f"Published event {event.event_type} ({event.event_id}) to {stream_name}: {message_id}")
         return message_id
 
-    async def ensure_consumer_group(self, stream: str, group: str):
+    async def ensure_consumer_group(self, stream: str, group: str) -> None:
         """Ensures a consumer group exists for a stream."""
         r = await self.get_redis()
         try:

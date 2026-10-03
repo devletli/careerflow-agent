@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, cast
 import yaml
 import logging
 
@@ -46,19 +46,19 @@ class CanonicalProfile:
 
     @property
     def name(self) -> str:
-        return self.facts.get("name", "")
+        return cast(str, self.facts.get("name", ""))
 
     @property
     def email(self) -> str:
-        return self.facts.get("email", "")
+        return cast(str, self.facts.get("email", ""))
 
     @property
     def phone(self) -> str:
-        return self.facts.get("phone", "+49 176 00000000")
+        return cast(str, self.facts.get("phone", "+49 176 00000000"))
 
     @property
     def website(self) -> str:
-        return self.facts.get("website", "")
+        return cast(str, self.facts.get("website", ""))
 
     @property
     def experience_years(self) -> int:
@@ -66,19 +66,19 @@ class CanonicalProfile:
 
     @property
     def languages(self) -> Dict[str, str]:
-        return self.facts.get("languages", {})
+        return cast(Dict[str, str], self.facts.get("languages", {}))
 
     @property
     def education(self) -> List[Dict[str, Any]]:
-        return self.facts.get("education", [])
+        return cast(List[Dict[str, Any]], self.facts.get("education", []))
 
     @property
     def certifications(self) -> List[str]:
-        return self.facts.get("certifications", [])
+        return cast(List[str], self.facts.get("certifications", []))
 
     @property
     def skills(self) -> List[str]:
-        return self.facts.get("skills", [])
+        return cast(List[str], self.facts.get("skills", []))
 
     def has_verified_skill(self, skill: str) -> bool:
         """Returns True only if skill is a verified candidate fact."""

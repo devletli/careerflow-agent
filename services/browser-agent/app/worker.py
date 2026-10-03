@@ -136,6 +136,7 @@ async def main():
         try:
             loop.add_signal_handler(sig, lambda: asyncio.create_task(worker.stop()))
         except NotImplementedError:
+            # Windows does not support add_signal_handler for all signals
             pass
 
     try:

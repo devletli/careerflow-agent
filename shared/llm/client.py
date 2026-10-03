@@ -2,7 +2,7 @@ import json
 import logging
 import re
 import asyncio
-from typing import Any, Dict, Optional, Type, TypeVar
+from typing import Any, Dict, Optional, Type, TypeVar, cast
 from pydantic import BaseModel, ValidationError
 
 from shared.config import settings
@@ -130,7 +130,7 @@ class LLMClient:
                     system=system,
                     messages=[{"role": "user", "content": user}],
                 )
-                return anth_response.content[0].text
+                return cast(str, anth_response.content[0].text)
             except ImportError:
                 logger.warning("anthropic package not installed")
                 raise
@@ -162,18 +162,22 @@ class LLMClient:
         if "```json" in text:
             match = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL)
             if match:
-                return json.loads(match.group(1))
+                data: Dict[str, Any] = json.loads(match.group(1))
+                return data
         elif "```" in text:
             match = re.search(r"```\s*(\{.*?\})\s*```", text, re.DOTALL)
             if match:
-                return json.loads(match.group(1))
+                data = json.loads(match.group(1))
+                return data
 
         # Direct JSON parse
         match = re.search(r"(\{.*\})", text, re.DOTALL)
         if match:
-            return json.loads(match.group(1))
+            data = json.loads(match.group(1))
+            return data
 
-        return json.loads(text)
+        data = json.loads(text)
+        return data
 
     def _generate_fallback(self, model_cls: Type[T], user_prompt: str) -> T:
         """Constructs a deterministic model instance when LLM is unavailable."""

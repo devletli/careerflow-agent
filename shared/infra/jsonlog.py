@@ -21,7 +21,7 @@ class correlation:
     def __init__(self, correlation_id: str = "", entity_id: str = ""):
         self.correlation_id = correlation_id
         self.entity_id = entity_id
-        self._tokens: list = []
+        self._tokens: list[contextvars.Token[str]] = []
 
     def __enter__(self) -> "correlation":
         self._tokens = [

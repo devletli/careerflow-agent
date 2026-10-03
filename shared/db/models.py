@@ -24,7 +24,7 @@ Base: Any = declarative_base()
 JSONType = JSON().with_variant(JSONB, "postgresql")
 
 
-def utc_now():
+def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 

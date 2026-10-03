@@ -24,7 +24,7 @@ def _digit_count(value: str) -> int:
     return sum(ch.isdigit() for ch in value)
 
 
-def _mask_phone(match: "re.Match") -> str:
+def _mask_phone(match: "re.Match[str]") -> str:
     text = match.group(0)
     if ":" in text:
         return text  # timestamps, IP:port, durations
@@ -56,8 +56,9 @@ def _candidate_names(profile_path: Optional[str] = None) -> List[str]:
             if isinstance(name, str) and name.strip():
                 _names_cache = [name.strip()]
                 _names_cache.extend(part for part in name.split() if len(part) >= 3)
-    except Exception:
-        pass
+    except Exception as exc:
+        # Best-effort only: a missing/unreadable profile must not break redaction.
+        logging.getLogger(__name__).debug("Candidate-name load skipped: %s", exc)
     return _names_cache
 
 
@@ -69,7 +70,7 @@ def reset_names_cache() -> None:
 def redact(text: str, profile_path: Optional[str] = None) -> str:
     """Returns text with e-mail, phone, and candidate-name values masked."""
     redacted = EMAIL_RE.sub(MASK, text)
-    dates: list = []
+    dates: list[str] = []
     redacted = _protect_dates(redacted, dates)
     redacted = PHONE_RE.sub(_mask_phone, redacted)
     for i, value in enumerate(dates):
@@ -80,8 +81,8 @@ def redact(text: str, profile_path: Optional[str] = None) -> str:
     return redacted
 
 
-def _protect_dates(text: str, dates: list) -> str:
-    def _tokenize(match: "re.Match") -> str:
+def _protect_dates(text: str, dates: list[str]) -> str:
+    def _tokenize(match: "re.Match[str]") -> str:
         dates.append(match.group(0))
         return f"{_DATE_TOKEN}{len(dates) - 1}{_DATE_TOKEN}"
 
@@ -100,6 +101,7 @@ class PiiRedactingFilter(logging.Filter):
             record.msg = redact(record.getMessage())
             record.args = ()
         except Exception:
+            # Logging filters must never raise; keep the original message.
             pass
         return True
 

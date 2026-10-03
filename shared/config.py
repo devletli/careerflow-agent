@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = "text"  # text | json (json enables structured logs, see shared.infra.jsonlog)
 
     @model_validator(mode="after")
-    def _check(self):
+    def _check(self) -> "Settings":
         if self.AUTOMATION_MODE not in {"PREPARE_APPLICATION", "FULL_AUTO"}:
             raise ValueError("AUTOMATION_MODE invalid")
         if self.AUTO_SUBMIT and self.AUTOMATION_MODE != "FULL_AUTO":
@@ -95,5 +95,7 @@ try:
     from shared.infra.pii import install_pii_redaction
 
     install_pii_redaction()
-except Exception:
-    pass
+except Exception as exc:  # noqa: BLE001 - logging may not exist yet; never fail import
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning("PII redaction filter not installed: %s", exc)

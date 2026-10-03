@@ -38,8 +38,8 @@ async def _delivery_count(redis: Any, stream: str, group: str, msg_id: str) -> i
                 try:
                     return int(entry[key])
                 except (TypeError, ValueError):
-                    pass
-        return 1
+                    pass  # try the next known key name
+            return 1
     try:
         # XPENDING range tuple: (id, consumer, idle_ms, deliveries)
         return int(entry[3])
@@ -47,7 +47,7 @@ async def _delivery_count(redis: Any, stream: str, group: str, msg_id: str) -> i
         return 1
 
 
-def _split_autoclaim(result: Any) -> Tuple[str, list]:
+def _split_autoclaim(result: Any) -> Tuple[str, list[Any]]:
     """Normalizes XAUTOCLAIM return shape across redis-py versions."""
     if isinstance(result, (list, tuple)) and len(result) >= 2:
         return str(result[0]), list(result[1] or [])

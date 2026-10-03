@@ -9,9 +9,10 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select, desc
-from typing import Optional
+from typing import Any, Optional
 import logging
 
+from app.errors import DomainError, domain_error_handler, unhandled_handler
 from app.security import ApiKey
 from shared.config import settings
 from shared.db.session import get_db_session, check_db_health
@@ -39,6 +40,9 @@ app = FastAPI(
 redis_bus = RedisEventBus()
 minio_client = MinIOClient()
 
+app.add_exception_handler(DomainError, domain_error_handler)
+app.add_exception_handler(Exception, unhandled_handler)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()],
@@ -63,7 +67,7 @@ class PipelineControlRequest(BaseModel):
 
 
 @app.get("/health")
-async def health():
+async def health() -> JSONResponse:
     """Health check validating connectivity to PostgreSQL, Redis, and MinIO."""
     db_healthy = await check_db_health()
     redis_healthy = await redis_bus.ping()
@@ -86,7 +90,7 @@ async def health():
 
 
 @app.get("/api/v1/status", dependencies=[ApiKey])
-def status():
+def status() -> dict[str, Any]:
     return {
         "service": "api",
         "version": "0.1.0",
@@ -102,7 +106,7 @@ def status():
 async def run_pipeline_action(
     request: PipelineControlRequest,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> dict[str, Any]:
     """Queues a targeted worker action; form filling requires explicit confirmation."""
     if request.action not in CONTROL_ACTIONS:
         raise HTTPException(
@@ -168,12 +172,16 @@ APPLICATION_EXECUTE_ACTIONS = {"prepare", "submit", "retry", "continue"}
 READY_STATUSES = {"READY_TO_SUBMIT", "READY_TO_APPLY"}
 
 
-@app.patch("/api/v1/applications/{application_id}/execute", dependencies=[ApiKey])
+@app.patch(
+    "/api/v1/applications/{application_id}/execute",
+    dependencies=[ApiKey],
+    response_model=None,
+)
 async def execute_application_action(
     application_id: UUID,
     request: ApplicationExecuteRequest,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> dict[str, Any] | JSONResponse:
     """Explicit per-application action (prepare/submit/retry/continue).
 
     The frontend sends the semantic action explicitly; each branch maps to a
@@ -330,7 +338,7 @@ async def list_jobs(
     limit: int = Query(default=100, le=100),
     offset: int = 0,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> list[dict[str, Any]]:
     document_count = (
         select(func.count(Document.id))
         .where(Document.job_id == Job.id)
@@ -394,7 +402,7 @@ async def list_applications(
     status: Optional[str] = Query(default=None, description="Filter by application status"),
     min_score: Optional[float] = Query(default=None, description="Minimum match score"),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> list[dict[str, Any]]:
     match_score = (
         select(JobMatch.overall_score)
         .where(JobMatch.job_id == Application.job_id)
@@ -422,7 +430,7 @@ async def list_applications(
 
     # Document summary per application job (latest CV/cover-letter ids).
     job_ids = list({a.job_id for a, *_ in rows})
-    docs_by_job: dict = {}
+    docs_by_job: dict[Any, list[Document]] = {}
     if job_ids:
         dres = await session.execute(
             select(Document).where(Document.job_id.in_(job_ids)).order_by(desc(Document.created_at))
@@ -432,7 +440,7 @@ async def list_applications(
     out = []
     for a, company, title, application_url, job_url, score in rows:
         docs = docs_by_job.get(a.job_id, [])
-        latest: dict = {}
+        latest: dict[tuple[Any, Any], Document] = {}
         for d in docs:
             key = (d.type, d.language)
             if key not in latest or (d.version, d.created_at) > (latest[key].version, latest[key].created_at):
@@ -469,7 +477,7 @@ async def list_applications(
 async def get_desktop_application_context(
     application_id: UUID,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> dict[str, Any]:
     """Returns verified data for the local, visible Playwright helper only."""
     stmt = (
         select(Application, Job)
@@ -542,7 +550,7 @@ async def list_documents(
     type: Optional[str] = Query(default=None, description="Filter by document type (cv, cover_letter)"),
     application_id: Optional[UUID] = Query(default=None, description="Filter by linked application"),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> list[dict[str, Any]]:
     stmt = (
         select(Document, Job.company, Job.title, Application.id, Application.status)
         .join(Job, Job.id == Document.job_id)
@@ -564,7 +572,7 @@ async def list_documents(
     rows = res.all()
 
     # Latest = highest version (then newest) per (job, type, language).
-    newest: dict = {}
+    newest: dict[tuple[Any, Any, Any], Document] = {}
     for document, *_ in rows:
         key = (document.job_id, document.type, document.language)
         current = newest.get(key)
@@ -597,7 +605,9 @@ async def list_documents(
     ]
 
 
-async def _stream_document_bytes(document_id: UUID, session: AsyncSession) -> tuple:
+async def _stream_document_bytes(
+    document_id: UUID, session: AsyncSession
+) -> tuple[Document, bytes]:
     """Loads a private artifact from MinIO (never exposes bucket URLs)."""
     document = await session.get(Document, document_id)
     if document is None:
@@ -620,7 +630,7 @@ async def _stream_document_bytes(document_id: UUID, session: AsyncSession) -> tu
     return document, content
 
 
-def _document_filename(document) -> str:
+def _document_filename(document: Document) -> str:
     filename = f"{document.type}_{document.language}_v{document.version}"
     if document.mime_type == "application/pdf":
         filename += ".pdf"
@@ -634,7 +644,7 @@ async def get_document_file(
     document_id: UUID,
     download: bool = Query(default=False, description="True for attachment download, False for inline view"),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> StreamingResponse:
     """Streams a private artifact; inline view or attachment download."""
     document, content = await _stream_document_bytes(document_id, session)
     disposition = "attachment" if download else "inline"
@@ -649,7 +659,7 @@ async def get_document_file(
 async def download_document(
     document_id: UUID,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> StreamingResponse:
     """Legacy attachment download (kept for compatibility; prefer /file)."""
     document, content = await _stream_document_bytes(document_id, session)
     return StreamingResponse(
@@ -675,7 +685,7 @@ class ManualApplicationRequest(BaseModel):
 async def get_application_detail(
     application_id: UUID,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> dict[str, Any]:
     """Central application record: job, score, documents, form analysis, events."""
     application = await session.get(Application, application_id)
     if application is None:
@@ -694,7 +704,7 @@ async def get_application_detail(
             .order_by(desc(Document.version), desc(Document.created_at))
         )
     ).scalars().all()
-    newest: dict = {}
+    newest: dict[tuple[Any, Any], Any] = {}
     for d in docs:
         key = (d.type, d.language)
         if key not in newest:
@@ -809,7 +819,7 @@ async def link_document(
     doc_id: UUID,
     request: DocumentLinkRequest,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> dict[str, Any]:
     """Manually links a document to an application (or unlinks with null)."""
     application = await session.get(Application, application_id)
     if application is None:
@@ -850,7 +860,7 @@ async def update_application_notes(
     application_id: UUID,
     request: ApplicationNotesRequest,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> dict[str, str]:
     """Stores free-form reviewer notes inside submission_metadata (no schema change)."""
     application = await session.get(Application, application_id)
     if application is None:
@@ -868,7 +878,7 @@ async def update_application_notes(
 async def create_manual_application(
     request: ManualApplicationRequest,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> JSONResponse:
     """Creates a Job + Application from a posting URL (idempotent by fingerprint)."""
     from urllib.parse import urlparse
 
@@ -961,7 +971,7 @@ async def create_manual_application(
 @app.patch("/api/v1/documents/backfill", dependencies=[ApiKey])
 async def backfill_document_application_links(
     session: AsyncSession = Depends(get_db_session),
-):
+) -> dict[str, Any]:
     """Backfill application_id for documents by matching via job_id.
     
     For each document with application_id=NULL, find applications sharing
@@ -978,7 +988,7 @@ async def backfill_document_application_links(
     # Group applications by job_id.
     app_stmt = select(Application.job_id, Application.id).distinct(Application.job_id)
     app_res = await session.execute(app_stmt)
-    apps_by_job: dict = {}
+    apps_by_job: dict[Any, list[Any]] = {}
     for job_id, app_id in app_res.all():
         apps_by_job.setdefault(job_id, []).append(app_id)
 
@@ -998,7 +1008,7 @@ async def backfill_document_application_links(
 async def list_events(
     limit: int = Query(default=50, le=200),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> list[dict[str, Any]]:
     stmt = select(PipelineEvent).order_by(desc(PipelineEvent.created_at)).limit(limit)
     res = await session.execute(stmt)
     events = res.scalars().all()
