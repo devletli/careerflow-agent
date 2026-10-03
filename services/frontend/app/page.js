@@ -490,8 +490,10 @@ function ApplicationsTab({ applications, error, loading, refresh, onExecute, bus
                       Submit
                     </button>
                   )}
+                  {/* Retained: ai-job-agent://prepare is the desktop-runner entry
+                      point, handled by scripts/desktop_runner.py. */}
                   {actions.includes("view") && (
-                    <a className="link" href={`/applications/${a.id}`}>
+                    <a className="link" href={`ai-job-agent://prepare?application_id=${a.id}`}>
                       View progress
                     </a>
                   )}

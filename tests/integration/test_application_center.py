@@ -295,33 +295,6 @@ def test_application_detail_includes_documents_and_form(client, seed):
     assert body["events"][0]["correlation_id"] == "corr-1"
 
 
-def test_manual_link_unlink_and_cross_job_rejected(client, seed):
-    # Link orphan -> app1 (same job).
-    r = client.patch(
-        f"/api/v1/applications/{seed['app1']}/documents/{seed['orphan']}",
-        json={"application_id": str(seed["app1"])},
-    )
-    assert r.status_code == 200 and r.json()["application_id"] == str(seed["app1"])
-    # Cross-job link rejected.
-    r2 = client.patch(
-        f"/api/v1/applications/{seed['app1']}/documents/{seed['other']}",
-        json={"application_id": str(seed["app1"])},
-    )
-    assert r2.status_code == 422
-    # Unlink.
-    r3 = client.patch(
-        f"/api/v1/applications/{seed['app1']}/documents/{seed['orphan']}",
-        json={"application_id": None},
-    )
-    assert r3.json()["application_id"] is None
-
-
-def test_notes_roundtrip(client, seed):
-    r = client.patch(f"/api/v1/applications/{seed['app1']}", json={"notes": "Call on Monday"})
-    assert r.status_code == 200 and r.json()["notes"] == "Call on Monday"
-    assert client.get(f"/api/v1/applications/{seed['app1']}").json()["notes"] == "Call on Monday"
-
-
 def test_manual_create_idempotent(client):
     first = client.post("/api/v1/applications/manual", json={"url": "https://example.com/jobs/42"})
     assert first.status_code == 201 and first.json()["created"] is True

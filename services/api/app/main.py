@@ -959,7 +959,7 @@ async def backfill_document_application_links(
     the same job_id and link them. If a job has multiple applications,
     the document stays unlinked to avoid ambiguity.
     """
-    from sqlalchemy import select, func
+    from sqlalchemy import select
 
     # Find all documents without an application link.
     doc_stmt = select(Document).where(Document.application_id.is_(None))

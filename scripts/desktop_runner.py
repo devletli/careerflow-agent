@@ -3,8 +3,8 @@
 import argparse
 import asyncio
 import json
+import logging
 import re
-import sys
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -15,6 +15,9 @@ from playwright.async_api import Page, async_playwright
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 API_BASE_URL = "http://localhost:8000"
 USER_DATA_DIRECTORY = PROJECT_ROOT / "browser-state" / "desktop-profile"
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger("desktop-runner")
 
 
 def application_id_from_uri(uri: str) -> str:
@@ -155,11 +158,13 @@ async def run(application_uri: str) -> None:
         )
         page = browser_context.pages[0] if browser_context.pages else await browser_context.new_page()
         await fill_form(page, context, profile)
-        print(
-            f"{context['company']} — {context['title']} hazır. "
-            "CAPTCHA/giriş ve kalan alanları tamamlayıp başvuruyu kendiniz gönderin."
+        logger.info(
+            "%s — %s hazır. CAPTCHA/giriş ve kalan alanları tamamlayıp "
+            "başvuruyu kendiniz gönderin. İşiniz bittiğinde Chromium "
+            "penceresini kapatın.",
+            context["company"],
+            context["title"],
         )
-        print("İşiniz bittiğinde Chromium penceresini kapatın.")
         await page.wait_for_event("close")
 
 
@@ -170,5 +175,5 @@ if __name__ == "__main__":
     try:
         asyncio.run(run(args.application_uri))
     except (RuntimeError, ValueError) as exc:
-        print(f"AI Job Agent desktop runner error: {exc}", file=sys.stderr)
+        logger.error("AI Job Agent desktop runner error: %s", exc)
         raise SystemExit(1) from exc

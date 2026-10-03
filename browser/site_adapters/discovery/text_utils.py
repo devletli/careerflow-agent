@@ -9,7 +9,7 @@ class _TextExtractor(HTMLParser):
         super().__init__(convert_charrefs=True)
         self._parts: List[str] = []
 
-    def handle_starttag(self, tag, attrs):
+    def handle_starttag(self, tag, _attrs):
         if tag in _BLOCK_TAGS:
             self._parts.append("\n")
         if tag == "li":

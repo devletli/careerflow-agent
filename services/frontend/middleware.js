@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
 
-// Attaches the shared API key to proxied backend requests server-side,
-// so the key never reaches the browser (no NEXT_PUBLIC_ variable is used).
-// The next.config.js rewrites then forward these requests to the API.
 export function middleware(request) {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    return NextResponse.next();
+  // Only proxy API calls and health check. The shared API key is attached
+  // to the UPSTREAM request headers server-side, so it never reaches the
+  // browser (setting it on the response would leak it to the client).
+  if (request.nextUrl.pathname.startsWith("/api/") || request.nextUrl.pathname === "/health-check") {
+    const requestHeaders = new Headers(request.headers);
+    if (process.env.API_KEY) {
+      requestHeaders.set("x-api-key", process.env.API_KEY);
+    }
+    return NextResponse.next({ request: { headers: requestHeaders } });
   }
-  const headers = new Headers(request.headers);
-  headers.set("x-api-key", apiKey);
-  return NextResponse.next({ request: { headers } });
+  return NextResponse.next();
 }
 
 export const config = {
