@@ -7,6 +7,35 @@ const TABS = STRINGS.tabs;
 const REFRESH_MS = 10000;
 const THEME_KEY = "ai-job-agent-theme";
 
+function usePersistentState(key, initial) {
+  // SSR-safe: start from `initial` so server and client render identically,
+  // then hydrate the stored value on mount (avoids React hydration mismatch).
+  const [value, setValue] = useState(initial);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`ai-job-agent-filter:${key}`);
+      if (raw !== null) setValue(JSON.parse(raw));
+    } catch {
+      // storage unavailable: initial value stands
+    }
+  }, [key]);
+  const set = useCallback(
+    (next) => {
+      setValue((prev) => {
+        const resolved = typeof next === "function" ? next(prev) : next;
+        try {
+          localStorage.setItem(`ai-job-agent-filter:${key}`, JSON.stringify(resolved));
+        } catch {
+          // storage unavailable: state still applies for this session
+        }
+        return resolved;
+      });
+    },
+    [key]
+  );
+  return [value, set];
+}
+
 function useTheme() {
   const [theme, setTheme] = useState("light");
 
@@ -70,8 +99,18 @@ function useHealth() {
 
   useEffect(() => {
     refresh();
-    const id = setInterval(refresh, REFRESH_MS);
-    return () => clearInterval(id);
+    const tick = () => {
+      if (!document.hidden) refresh();
+    };
+    const id = setInterval(tick, REFRESH_MS);
+    const onVisible = () => {
+      if (!document.hidden) refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [refresh]);
 
   return { health, error };
@@ -107,6 +146,7 @@ function usePolling(path, deps = []) {
       setData(result);
       setError(null);
     } catch (e) {
+      // Keep the last good data on error; surface the error banner only.
       setError(e.message);
     } finally {
       setLoading(false);
@@ -115,8 +155,19 @@ function usePolling(path, deps = []) {
 
   useEffect(() => {
     refresh();
-    const id = setInterval(refresh, REFRESH_MS);
-    return () => clearInterval(id);
+    // Pause polling while the tab is hidden; refresh once on return.
+    const tick = () => {
+      if (!document.hidden) refresh();
+    };
+    const id = setInterval(tick, REFRESH_MS);
+    const onVisible = () => {
+      if (!document.hidden) refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh, ...deps]);
 
@@ -260,7 +311,7 @@ function OverviewTab({ status, jobs, applications, events, eventsLoading, onRun,
 }
 
 function JobsTab({ jobs, error, loading, refresh }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = usePersistentState("jobs.query", "");
   const filtered = (jobs || []).filter((j) => {
     const q = query.trim().toLowerCase();
     if (!q) return true;
@@ -391,9 +442,9 @@ function DocBadges({ docs }) {
 }
 
 function ApplicationsTab({ applications, error, loading, refresh, onExecute, busyId }) {
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [minScore, setMinScore] = useState("");
+  const [query, setQuery] = usePersistentState("applications.query", "");
+  const [statusFilter, setStatusFilter] = usePersistentState("applications.status", "");
+  const [minScore, setMinScore] = usePersistentState("applications.minScore", "");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const filtered = (applications || []).filter((a) => {
@@ -542,7 +593,7 @@ function docTypeLabel(type) {
 }
 
 function DocumentsTab({ documents, error, loading, refresh }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = usePersistentState("documents.query", "");
   const filtered = (documents || []).filter((d) => {
     const q = query.trim().toLowerCase();
     if (!q) return true;
@@ -691,12 +742,37 @@ function SettingsTab({ status }) {
   );
 }
 
+function tabFromHash() {
+  if (typeof window === "undefined") return "Overview";
+  const slug = window.location.hash.replace(/^#/, "").toLowerCase();
+  return TABS.find((t) => t.toLowerCase() === slug) || "Overview";
+}
+
 export default function Home() {
+  // SSR renders "Overview"; the hash is applied on mount so server and
+  // client HTML match (no hydration mismatch).
   const [tab, setTab] = useState("Overview");
   const [runningAction, setRunningAction] = useState(null);
   const [actionMessage, setActionMessage] = useState("");
   const { health } = useHealth();
   const { theme, toggle } = useTheme();
+
+  // Active tab is derived from the URL hash so dashboard views are
+  // deep-linkable (e.g. /#applications); nav itself comes from TABS.
+  useEffect(() => {
+    setTab(tabFromHash());
+    const onHash = () => setTab(tabFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  const selectTab = useCallback((t) => {
+    setTab(t);
+    try {
+      window.location.hash = t.toLowerCase();
+    } catch {
+      // non-browser render: state update above is enough
+    }
+  }, []);
   const statusQ = usePolling("/api/v1/status");
   const jobsQ = usePolling("/api/v1/jobs?limit=100");
   const applicationsQ = usePolling("/api/v1/applications?limit=100");
@@ -802,7 +878,7 @@ export default function Home() {
           <button
             key={t}
             className={`tab ${tab === t ? "active" : ""}`}
-            onClick={() => setTab(t)}
+            onClick={() => selectTab(t)}
           >
             {t}
           </button>

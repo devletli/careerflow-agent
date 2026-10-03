@@ -136,6 +136,27 @@ def test_download_endpoint_streams_safely():
     assert "Document not found" in api  # 404 for unknown ids, no arbitrary object access
 
 
+def test_tab_navigation_is_url_driven():
+    src = PAGE.read_text(encoding="utf-8")
+    # Single nav source + URL hash as the active-tab source of truth.
+    assert re.search(r"const TABS = STRINGS\.tabs", src)
+    assert "tabFromHash" in src and "location.hash" in src
+    assert "hashchange" in src
+    assert "TABS.map" in src
+
+
+def test_polling_discipline_and_filter_persistence():
+    src = PAGE.read_text(encoding="utf-8")
+    # Polling pauses while the page is hidden and resumes on return.
+    assert "visibilitychange" in src
+    assert "document.hidden" in src
+    # Search/filter state survives tab switches via localStorage.
+    assert "usePersistentState" in src
+    assert "ai-job-agent-filter:" in src
+    for key in ("jobs.query", "applications.query", "documents.query"):
+        assert f'"{key}"' in src, f"missing persistent filter key {key}"
+
+
 def test_gui_action_contract_explicit():
     """GUI must call onExecute(a, action) with an explicit semantic action.
 
