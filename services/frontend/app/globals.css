@@ -460,7 +460,7 @@ a.link:hover {
 
 @media (max-width: 700px) {
   .table-wrapper {
-    overflow: hidden;
+    overflow: auto;
   }
 }
 

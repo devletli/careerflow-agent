@@ -6,7 +6,6 @@ passes submit=True AND confirmed=True AND the automation mode allows it
 """
 import logging
 import re
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional
@@ -28,6 +27,7 @@ from shared.db.models import (
     AutomationRun,
 )
 from shared.db.session import get_session
+from shared.profile.loader import CanonicalProfile
 
 from browser.site_adapters.base import FieldPlan, FillResult
 
@@ -50,6 +50,21 @@ class ExecutionResult:
 from browser.site_adapters.registry import resolve
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_submission_outcome(submitted: bool, confirmation_detected: bool) -> str:
+    """Pure submission-outcome rule (unit-tested).
+
+    - click failed -> FAILED (caller handles fill vs failure context)
+    - click succeeded + confirmation verified -> SUBMITTED
+    - click succeeded + confirmation uncertain -> REQUIRES_HUMAN (never auto-retry)
+    """
+    if submitted and confirmation_detected:
+        return "SUBMITTED"
+    if submitted and not confirmation_detected:
+        return "REQUIRES_HUMAN"
+    return "FILLED"
+
 
 SUBMIT_SELECTORS = [
     "button[type='submit']",
@@ -179,7 +194,7 @@ class BrowserAutomationEngine:
                 if submit and confirmed and self._submit_allowed():
                     if on_submitting is not None:
                         await on_submitting()
-                    submit_result = await self._click_submit(page)
+                    submit_result = await self._click_submit(page, adapter=adapter)
                     result.submitted = submit_result["clicked"]
                     result.confirmation_detected = submit_result["confirmed"]
                     if not result.submitted:
@@ -197,58 +212,103 @@ class BrowserAutomationEngine:
         return settings.AUTOMATION_MODE == "FULL_AUTO" and settings.AUTO_SUBMIT
 
     async def _detect_confirmation(self, page: Any) -> Optional[Dict[str, str]]:
-        """Check for submission confirmation signals.
-        
-        Returns dict with confirmation signals if detected, None otherwise.
-        Signals checked:
-        - URL change containing application reference
-        - Confirmation heading/text
-        - Success message
+        """Check for explicit submission confirmation signals.
+
+        Conservative signals only (no generic "success" / bare "thank you"):
+        - URL containing an application reference
+        - explicit application-received / submission-confirmed message
+        Returns a dict with the matched signals, else None.
         """
         try:
-            # Check URL for application reference
-            current_url = page.url
-            ref_match = re.search(r"[?&]ref=([^&\n]+)|application=([^&\n]+)|ref_id=([^&\n]+)", current_url)
-            reference = ref_match.group(1) if ref_match else None
-            
-            # Check for confirmation heading
-            confirmation_heading = await page.query_selector(
-                ' text=~"application received|thank you for applying|success|submission confirmed"'
+            current_url = page.url if isinstance(page.url, str) else await page.url()
+            ref_match = re.search(
+                r"[?&](?:ref|application|ref_id|confirmation|application_id)=([^&#\n]+)",
+                current_url,
             )
-            heading_text = await confirmation_heading.inner_text() if confirmation_heading else None
-            
-            # Check for success message
-            success_msg = await page.query_selector(
-                ' text=~"application received|thank you|submission confirmed|your application has been submitted"'
+            reference = next((g for g in ref_match.groups() if g), None) if ref_match else None
+
+            heading = await page.query_selector(
+                ' text=~"application received|thank you for applying|submission confirmed|your application has been submitted|application submitted"'
             )
-            msg_text = await success_msg.inner_text() if success_msg else None
-            
-            if reference or heading_text or msg_text:
+            heading_text = await heading.inner_text() if heading else None
+
+            if reference or heading_text:
                 return {
                     "reference": reference,
                     "heading": heading_text,
-                    "message": msg_text,
                     "url": current_url,
                 }
         except Exception as e:
             logger.debug(f"Confirmation detection error: {e}")
         return None
 
-    async def _click_submit(self, page: Any) -> Dict[str, bool]:
-        try:
-            for selector in SUBMIT_SELECTORS:
+    async def _find_submit_button(self, page: Any) -> Optional[Any]:
+        for selector in SUBMIT_SELECTORS:
+            try:
                 button = await page.query_selector(selector)
                 if button and await button.is_visible() and await button.is_enabled():
-                    await button.click()
-                    await page.wait_for_load_state("networkidle", timeout=15000)
-                    logger.info("Submit clicked")
-                    
-                    # Detect confirmation after submit (guiyama.md items 22-23)
-                    confirmation = await self._detect_confirmation(page)
-                    return {"clicked": True, "confirmed": confirmation is not None}
+                    return button
+            except Exception:
+                continue
+        return None
+
+    async def _wait_for_confirmation(
+        self, page: Any, adapter: Any = None, timeout_ms: int = 15000
+    ) -> Optional[Dict[str, str]]:
+        """Poll for confirmation without ever invalidating a completed click.
+
+        Prefers adapter-specific verification when the adapter exposes
+        `verify_submission(page)`; falls back to the conservative generic
+        detection above.
+        """
+        if adapter is not None:
+            verify = getattr(adapter, "verify_submission", None)
+            if callable(verify):
+                try:
+                    if await verify(page):
+                        return {"adapter": getattr(adapter, "name", "unknown")}
+                except Exception as e:
+                    logger.debug(f"Adapter confirmation check failed: {e}")
+        deadline = timeout_ms / 1000.0
+        elapsed = 0.0
+        step = 0.5
+        while elapsed < deadline:
+            confirmation = await self._detect_confirmation(page)
+            if confirmation is not None:
+                return confirmation
+            try:
+                await page.wait_for_timeout(int(step * 1000))
+            except Exception:
+                break
+            elapsed += step
+        return await self._detect_confirmation(page)
+
+    async def _click_submit(self, page: Any, adapter: Any = None) -> Dict[str, Any]:
+        try:
+            button = await self._find_submit_button(page)
         except Exception as exc:
-            logger.error(f"Submit failed: {exc}")
-        return {"clicked": False, "confirmed": False}
+            logger.error(f"Submit button lookup failed: {exc}")
+            return {"clicked": False, "confirmed": False, "error": str(exc)}
+        if button is None:
+            return {"clicked": False, "confirmed": False, "error": "SUBMIT_BUTTON_NOT_FOUND"}
+        try:
+            await button.click()
+        except Exception as exc:
+            logger.error(f"Submit click failed: {exc}")
+            return {"clicked": False, "confirmed": False, "error": str(exc)}
+        logger.info("Submit clicked")
+        # The click itself succeeded. A timeout AFTER the click must NOT
+        # convert the click into clicked=False.
+        try:
+            confirmation = await self._wait_for_confirmation(page, adapter=adapter)
+        except Exception as exc:
+            logger.debug(f"Confirmation wait failed after successful click: {exc}")
+            confirmation = None
+        return {
+            "clicked": True,
+            "confirmed": confirmation is not None,
+            "confirmation": confirmation,
+        }
 
     # -------------------------------------------------------- application flow
 
@@ -282,6 +342,16 @@ class BrowserAutomationEngine:
             if not job:
                 logger.warning(f"Job {app.job_id} not found for application {app_id}")
                 return "FAILED"
+            # Idempotency guards: never blindly re-execute terminal/ambiguous states.
+            if app.status == "SUBMITTED":
+                logger.warning(f"Application {app_id} already SUBMITTED; refusing duplicate execution")
+                return "DUPLICATE"
+            if app.status in ("RUNNING", "FILLING", "SUBMITTING"):
+                logger.warning(f"Application {app_id} already running ({app.status}); refusing concurrent execution")
+                return "RUNNING"
+            if app.status == "REQUIRES_HUMAN":
+                logger.warning(f"Application {app_id} needs human review; refusing automatic retry")
+                return "REQUIRES_HUMAN"
             answers = (
                 await session.execute(
                     select(ApplicationAnswer).where(ApplicationAnswer.application_id == app_id)
@@ -355,7 +425,10 @@ class BrowserAutomationEngine:
                 )
                 return "BLOCKED"
 
-            if result.submitted and result.confirmation_detected:
+            outcome = resolve_submission_outcome(
+                bool(result.submitted), bool(result.confirmation_detected)
+            )
+            if outcome == "SUBMITTED":
                 await self._mark(app_id, PipelineStatus.SUBMITTED.value)
                 await self._finalize(run_id, "COMPLETED")
                 await self._publish(
@@ -368,8 +441,9 @@ class BrowserAutomationEngine:
                 logger.info(f"Application {app_id} successfully submitted")
                 return "SUBMITTED"
 
-            # Submission clicked but no confirmation detected (guiyama.md item 23)
-            if result.submitted and not result.confirmation_detected:
+            # Click succeeded but confirmation uncertain: never auto-retry,
+            # the application may already have been submitted.
+            if outcome == "REQUIRES_HUMAN":
                 reason = "Submission result could not be verified; may already have been submitted"
                 await self._mark(app_id, PipelineStatus.REQUIRES_HUMAN.value, blocked_reason=reason)
                 await self._finalize(run_id, "REQUIRES_HUMAN", reason=reason)
@@ -383,19 +457,17 @@ class BrowserAutomationEngine:
                 logger.warning(f"Application {app_id} REQUIRES_HUMAN: {reason}")
                 return "REQUIRES_HUMAN"
 
-            # Submission was not clicked
-            if not result.submitted:
-                await self._mark(app_id, PipelineStatus.FILLED.value)
-                await self._finalize(run_id, "COMPLETED")
-                await self._publish(
-                    ApplicationFilledEvent(
-                        correlation_id=f"browser-{uuid4().hex[:8]}",
-                        entity_id=str(app_id),
-                        payload={"job_id": str(job.id), "company": job.company, "title": job.title},
-                    )
+            await self._mark(app_id, PipelineStatus.FILLED.value)
+            await self._finalize(run_id, "COMPLETED")
+            await self._publish(
+                ApplicationFilledEvent(
+                    correlation_id=f"browser-{uuid4().hex[:8]}",
+                    entity_id=str(app_id),
+                    payload={"job_id": str(job.id), "company": job.company, "title": job.title},
                 )
-                logger.info(f"Application {app_id} successfully filled")
-                return "FILLED"
+            )
+            logger.info(f"Application {app_id} successfully filled")
+            return "FILLED"
 
         except Exception as e:
             logger.error(f"Browser agent error for application {app_id}: {e}", exc_info=True)

@@ -25,7 +25,7 @@ def test_tables_scroll_inside_panel():
         "tables must fit the viewport via responsive columns, not scroll containers"
     )
     tables = len(re.findall(r"<table", src))
-    responsive = len(re.findall(r'<table className="responsive"', src))
+    responsive = len(re.findall(r'<table className="responsive', src))
     assert tables >= 4, f"expected at least 4 tables, found {tables}"
     assert responsive >= tables, "every dashboard table must use the responsive layout"
     labels = len(re.findall(r"data-label=", src))
@@ -87,7 +87,7 @@ def test_tables_show_loading_state():
 def test_frontend_api_paths_exist_in_backend():
     frontend_paths = set(re.findall(r'"(/api/[^"?]*)', PAGE.read_text(encoding="utf-8")))
     frontend_paths |= set(re.findall(r"'(/api/[^'?]*)", PAGE.read_text(encoding="utf-8")))
-    backend_routes = set(re.findall(r'@app\.(?:get|post)\("([^"]*)"', API.read_text(encoding="utf-8")))
+    backend_routes = set(re.findall(r'@app\.(?:get|post|patch|put|delete)\("([^"]*)"', API.read_text(encoding="utf-8")))
     # dynamic segments match any concrete value
     patterns = [re.sub(r"\{[^}]+\}", "[^/]+", r) + r"$" for r in backend_routes]
     missing = [p for p in sorted(frontend_paths) if not any(re.match(pat, p) for pat in patterns)]
@@ -121,3 +121,21 @@ def test_download_endpoint_streams_safely():
     assert '"/api/v1/documents/{document_id}/download"' in api
     assert "StreamingResponse" in api and "attachment;" in api
     assert "Document not found" in api  # 404 for unknown ids, no arbitrary object access
+
+
+def test_gui_action_contract_explicit():
+    """GUI must call onExecute(a, action) with an explicit semantic action.
+
+    Regression for yama.md P0: Prepare/Submit/Retry/Continue must not share
+    one implicit onSubmit handler, and per-row actions must come from
+    getAvailableActions(application) — never from submittingApplicationId.
+    """
+    src = PAGE.read_text(encoding="utf-8")
+    for action in ("prepare", "submit", "retry", "continue"):
+        assert f'onExecute(a, "{action}")' in src, f"missing explicit onExecute call for {action}"
+    assert "onClick={() => onSubmit(a)}" not in src, "implicit onSubmit handler must not remain"
+    assert "function getAvailableActions(application)" in src
+    assert "submittingApplicationId" not in src, "row actions must not depend on submittingApplicationId"
+    api = API.read_text(encoding="utf-8")
+    assert '"/api/v1/applications/{application_id}/execute"' in api
+    assert "prepare" in api and "retry" in api and "continue" in api

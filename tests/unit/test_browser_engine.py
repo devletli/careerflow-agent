@@ -152,7 +152,7 @@ def test_submit_requires_confirmation_and_full_auto(monkeypatch):
 
     async def attempt(submit, confirmed):
         engine = BrowserAutomationEngine()
-        spy = AsyncMock(return_value=True)
+        spy = AsyncMock(return_value={"clicked": True, "confirmed": True})
         monkeypatch.setattr(engine, "_click_submit", spy)
         result = await engine.run(
             "https://example.com/apply", _plan(), submit=submit, confirmed=confirmed

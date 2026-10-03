@@ -391,13 +391,12 @@ function DocBadges({ docs }) {
   );
 }
 
-function ApplicationsTab({ applications, error, loading, refresh, onSubmit, submittingApplicationId }) {
+function ApplicationsTab({ applications, error, loading, refresh, onExecute, busyId }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [minScore, setMinScore] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [notice, setNotice] = useState("");
-  const [actionMessage, setActionMessage] = useState("");
   const filtered = (applications || []).filter((a) => {
     const q = query.trim().toLowerCase();
     const matchesQ = !q || `${a.company || ""} ${a.title || ""}`.toLowerCase().includes(q);
@@ -405,21 +404,30 @@ function ApplicationsTab({ applications, error, loading, refresh, onSubmit, subm
     const matchesScore = !minScore || (a.match_score ?? -1) >= Number(minScore);
     return matchesQ && matchesS && matchesScore;
   });
-  // Determine available actions per application state
-  const availableActions = useCallback(() => {
-    const a = applications?.find(x => x.id === submittingApplicationId);
-    if (!a) return {};
-    const status = a.status;
-    const actions: Record<string, string> = {};
-    if (status === "CREATED") actions.prepare = "Prepare";
-    if (status === "READY_TO_SUBMIT") actions.submit = "Submit";
-    if (status === "RUNNING") actions.view = "View progress";
-    if (status === "REQUIRES_HUMAN") actions.continue = "Continue manually";
-    if (status === "FAILED") actions.retry = "Retry";
-    if (status === "SUBMITTED") actions.details = "View details";
-    return actions;
-  }, [applications, submittingApplicationId]);
-  const actions = availableActions();
+  // Available actions per application status (P0). Legacy backend
+  // statuses are normalized so no row ever shows a wrong action set.
+  function getAvailableActions(application) {
+    switch (application.status) {
+      case "CREATED":
+        return ["prepare"];
+      case "READY_TO_SUBMIT":
+      case "READY_TO_APPLY":
+        return ["submit"];
+      case "RUNNING":
+      case "FILLING":
+      case "SUBMITTING":
+        return ["view"];
+      case "REQUIRES_HUMAN":
+      case "BLOCKED":
+        return ["continue"];
+      case "FAILED":
+        return ["retry"];
+      case "SUBMITTED":
+        return ["details"];
+      default:
+        return [];
+    }
+  }
   
   return (
     <div className="panel">
@@ -453,7 +461,9 @@ function ApplicationsTab({ applications, error, loading, refresh, onSubmit, subm
           </tr>
         </thead>
         <tbody>
-          {filtered.map((a) => (
+          {filtered.map((a) => {
+            const actions = getAvailableActions(a);
+            return (
             <tr key={a.id}>
               <td data-label={STRINGS.colJob} className="cell-main">
                 <div className="cell-title" title={`${a.company} — ${a.title}`}>
@@ -469,40 +479,41 @@ function ApplicationsTab({ applications, error, loading, refresh, onSubmit, subm
               <td data-label={STRINGS.colStatus}><StatusPill status={a.status} /></td>
               <td data-label={STRINGS.colDocs}><DocBadges docs={a.documents} /></td>
               <td data-label={STRINGS.colUpdated} className="cell-wrap">{formatDate(a.created_at)}</td>
-              <td data-label={STRINGS.colActions} className="application-actions">
-                {actions.prepare && (
-                  <button className="refresh-btn" onClick={() => onSubmit(a)}>
-                    {actions.prepare}
-                  </button>
-                )}
-                {actions.submit && (
-                  <button className="refresh-btn primary-btn" onClick={() => onSubmit(a)} disabled={Boolean(submittingApplicationId)}>
-                    {actions.submit}
-                  </button>
-                )}
-                {actions.view && (
-                  <a className="link" href={`ai-job-agent://prepare?application_id=${a.id}`}>
-                    {actions.view}
-                  </a>
-                )}
-                {actions.continue && (
-                  <button className="refresh-btn" onClick={() => onSubmit(a)}>
-                    {actions.continue}
-                  </button>
-                )}
-                {actions.retry && (
-                  <button className="refresh-btn" onClick={() => onSubmit(a)}>
-                    {actions.retry}
-                  </button>
-                )}
-                {actions.details && (
-                  <a className="link" href={`/applications/${a.id}`}>
-                    {actions.details}
-                  </a>
-                )}
-              </td>
+              <td data-label={STRINGS.colActions} className="application-actions actions-sticky">
+                  {actions.includes("prepare") && (
+                    <button className="refresh-btn" onClick={() => onExecute(a, "prepare")} disabled={busyId === a.id}>
+                      Prepare
+                    </button>
+                  )}
+                  {actions.includes("submit") && (
+                    <button className="refresh-btn primary-btn" onClick={() => onExecute(a, "submit")} disabled={busyId === a.id}>
+                      Submit
+                    </button>
+                  )}
+                  {actions.includes("view") && (
+                    <a className="link" href={`/applications/${a.id}`}>
+                      View progress
+                    </a>
+                  )}
+                  {actions.includes("continue") && (
+                    <button className="refresh-btn" onClick={() => onExecute(a, "continue")} disabled={busyId === a.id}>
+                      Continue manually
+                    </button>
+                  )}
+                  {actions.includes("retry") && (
+                    <button className="refresh-btn" onClick={() => onExecute(a, "retry")} disabled={busyId === a.id}>
+                      Retry
+                    </button>
+                  )}
+                  {actions.includes("details") && (
+                    <a className="link" href={`/applications/${a.id}`}>
+                      View details
+                    </a>
+                  )}
+                </td>
             </tr>
-          ))}
+            );
+          })}
           {filtered.length === 0 && (
             <tr>
               <td colSpan={6} className="muted">
@@ -720,29 +731,56 @@ export default function Home() {
     }
   }, [applicationsQ, documentsQ, eventsQ, jobsQ]);
 
-  const submitApplication = useCallback(async (application) => {
+  const executeApplication = useCallback(async (application, action) => {
+    if (!application || !action) return;
     const name = `${application.company} — ${application.title}`;
-    if (!window.confirm(STRINGS.confirmSubmit.replace("{name}", name))) return;
 
+    if (action === "submit") {
+      if (!window.confirm(STRINGS.confirmSubmit.replace("{name}", name))) return;
+      setRunningAction(application.id);
+      setActionMessage("");
+      try {
+        // Explicit semantic action: the backend validates state, duplicate
+        // and automation-mode guards, then queues the browser submission.
+        const result = await fetchJson(`/api/v1/applications/${application.id}/execute`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "submit" }),
+        });
+        setActionMessage(`Submission for ${name} queued (${result.correlation_id}).`);
+        setTimeout(() => {
+          applicationsQ.refresh();
+          eventsQ.refresh();
+        }, 1000);
+      } catch (error) {
+        setActionMessage(`Could not start submission for ${name}: ${error.message}`);
+      } finally {
+        setRunningAction(null);
+      }
+      return;
+    }
+
+    // prepare / retry / continue go through the explicit per-application endpoint
+    // so the backend receives the semantic action (not an implicit submit).
     setRunningAction(application.id);
     setActionMessage("");
     try {
-      const result = await fetchJson("/api/v1/pipeline/actions", {
-        method: "POST",
+      const result = await fetchJson(`/api/v1/applications/${application.id}/execute`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "submit_application",
-          application_id: application.id,
-          confirmed: true,
-        }),
+        body: JSON.stringify({ action }),
       });
-      setActionMessage(`Submission for ${name} queued (${result.correlation_id}).`);
+      if (action === "continue" && result.manual_steps) {
+        setActionMessage(result.manual_steps.join(" "));
+      } else {
+        setActionMessage(`${action} accepted for ${name} (status: ${result.status}).`);
+      }
       setTimeout(() => {
         applicationsQ.refresh();
         eventsQ.refresh();
       }, 1000);
     } catch (error) {
-      setActionMessage(`Could not start submission for ${name}: ${error.message}`);
+      setActionMessage(`Could not run ${action} for ${name}: ${error.message}`);
     } finally {
       setRunningAction(null);
     }
@@ -789,8 +827,8 @@ export default function Home() {
           error={applicationsQ.error}
           loading={applicationsQ.loading}
           refresh={applicationsQ.refresh}
-          onSubmit={submitApplication}
-          submittingApplicationId={runningAction}
+          onExecute={executeApplication}
+          busyId={runningAction}
         />
       )}
       {tab === "Documents" && (

@@ -153,3 +153,23 @@ class GenericAdapter:
                 pass
 
         return result
+
+    async def verify_submission(self, page: Page) -> bool:
+        """Conservative generic confirmation: never claim success lightly.
+
+        Site-specific adapters (Workable/Greenhouse/Lever) should override
+        this with their own confirmation rules. The generic adapter only
+        accepts an explicit application-received style message.
+        """
+        try:
+            body = (await page.content()).lower()
+        except Exception:
+            return False
+        explicit_markers = (
+            "application received",
+            "thank you for applying",
+            "submission confirmed",
+            "your application has been submitted",
+            "application submitted",
+        )
+        return any(marker in body for marker in explicit_markers)

@@ -21,6 +21,7 @@ class FillResult:
     skipped_unverified: list[str] = field(default_factory=list)
     blocked_reason: str | None = None  # "CAPTCHA" | "LOGIN" | "MFA" | None
     submitted: bool = False
+    confirmation_detected: bool = False
 
 
 @runtime_checkable

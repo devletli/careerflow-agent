@@ -154,12 +154,16 @@ export default function ApplicationDetail() {
           <button className="refresh-btn primary-btn" onClick={() => runAction("generate_documents")}>
             {STRINGS.regenerate}
           </button>
-          <button className="refresh-btn primary-btn" onClick={() => runAction("fill_applications")}>
-            {STRINGS.fillWithPlaywright}
-          </button>
-          <button className="refresh-btn primary-btn" onClick={() => runAction("submit_application")}>
-            {STRINGS.submitWithPlaywright}
-          </button>
+          {["CREATED", "READY_TO_SUBMIT", "READY_TO_APPLY", "FAILED", "REQUIRES_HUMAN"].includes(data.status) && (
+            <button className="refresh-btn primary-btn" onClick={() => runAction("fill_applications")}>
+              {STRINGS.fillWithPlaywright}
+            </button>
+          )}
+          {["READY_TO_SUBMIT", "READY_TO_APPLY"].includes(data.status) && (
+            <button className="refresh-btn primary-btn" onClick={() => runAction("submit_application")}>
+              {STRINGS.submitWithPlaywright}
+            </button>
+          )}
         </div>
         {actionMessage && <div className="action-message">{actionMessage}</div>}
       </div>

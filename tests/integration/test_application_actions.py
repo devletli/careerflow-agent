@@ -1,0 +1,203 @@
+"""yama.md P0 regression tests: explicit per-application execute actions.
+
+Covers the /execute contract end to end (offline, SQLite + mocked redis):
+- prepare: CREATED -> READY_TO_SUBMIT (idempotent from ready, 409 otherwise)
+- submit: READY_* -> 202 queued; SUBMITTED / REQUIRES_HUMAN rejected
+- retry: only FAILED may retry (safe default retryable=false elsewhere)
+- continue: only REQUIRES_HUMAN, returns an honest manual workflow
+- unknown actions rejected with 422
+"""
+import importlib.util
+import sys
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+from uuid import uuid4
+
+import pytest
+
+pytest.importorskip("fastapi")
+pytest.importorskip("httpx")
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT / "services" / "api") not in sys.path:
+    sys.path.insert(0, str(ROOT / "services" / "api"))
+
+
+def _load_api():
+    path = ROOT / "services" / "api" / "app" / "main.py"
+    spec = importlib.util.spec_from_file_location("careerflow_api_actions", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["careerflow_api_actions"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_api = _load_api()
+
+from app.security import require_api_key  # noqa: E402
+from shared.db.models import Application, Base, Job  # noqa: E402
+
+_api.app.dependency_overrides[require_api_key] = lambda: None
+
+
+def _make_app(session, job_id, status, **kwargs):
+    app = Application(
+        id=uuid4(),
+        job_id=job_id,
+        candidate_id="cand-1",
+        application_fingerprint=f"fp-{uuid4().hex}",
+        status=status,
+        **kwargs,
+    )
+    session.add(app)
+    return app
+
+
+@pytest.fixture()
+async def seed():
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(bind=engine, expire_on_commit=False)
+    async with maker() as s:
+        job = Job(
+            id=uuid4(), source="manual", source_job_id="act-1", company="Acme",
+            title="DevOps Engineer", url="https://acme.example/j/1",
+            application_url="https://acme.example/j/1/apply",
+            job_fingerprint="fp-act-1", status="NORMALIZED",
+        )
+        s.add(job)
+        await s.flush()
+        ids = {"job": job.id}
+        ids["created"] = _make_app(s, job.id, "CREATED").id
+        ids["ready"] = _make_app(s, job.id, "READY_TO_SUBMIT").id
+        ids["submitted"] = _make_app(s, job.id, "SUBMITTED").id
+        ids["failed"] = _make_app(
+            s, job.id, "FAILED", failure_reason="Form timeout before submit"
+        ).id
+        ids["human"] = _make_app(
+            s, job.id, "REQUIRES_HUMAN",
+            blocked_reason="Submission result could not be verified",
+        ).id
+        ids["running"] = _make_app(s, job.id, "RUNNING").id
+        ids["blocked"] = _make_app(
+            s, job.id, "BLOCKED", blocked_reason="CAPTCHA detected"
+        ).id
+        await s.commit()
+        ids = {k: (str(v) if not isinstance(v, str) else v) for k, v in ids.items()}
+    from shared.db.session import get_db_session
+
+    async def _override():
+        async with maker() as session:
+            yield session
+            await session.commit()
+
+    _api.app.dependency_overrides[get_db_session] = _override
+    yield ids
+    _api.app.dependency_overrides.pop(get_db_session, None)
+    await engine.dispose()
+
+
+@pytest.fixture()
+def client(seed):
+    yield __import__("fastapi.testclient", fromlist=["TestClient"]).TestClient(_api.app)
+
+
+def _execute(client, app_id, action):
+    return client.patch(f"/api/v1/applications/{app_id}/execute", json={"action": action})
+
+
+def test_prepare_transitions_created_to_ready(client, seed):
+    r = _execute(client, seed["created"], "prepare")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "READY_TO_SUBMIT"
+
+
+def test_prepare_idempotent_from_ready(client, seed):
+    r = _execute(client, seed["ready"], "prepare")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "READY_TO_SUBMIT"
+
+
+def test_prepare_rejected_from_submitted(client, seed):
+    assert _execute(client, seed["submitted"], "prepare").status_code == 409
+
+
+def test_submit_queues_from_ready(client, seed, monkeypatch):
+    from shared.config import settings
+
+    monkeypatch.setattr(settings, "AUTOMATION_MODE", "FULL_AUTO")
+    monkeypatch.setattr(settings, "AUTO_SUBMIT", True)
+    with patch.object(
+        _api.redis_bus, "publish", new=AsyncMock(return_value="msg-1")
+    ) as publish:
+        r = _execute(client, seed["ready"], "submit")
+    assert r.status_code == 202, r.text
+    body = r.json()
+    assert body["action"] == "submit"
+    assert body["application_id"] == seed["ready"]
+    publish.assert_awaited_once()
+    event = publish.await_args.args[0]
+    assert event.payload["action"] == "submit_application"
+    assert event.payload["application_id"] == seed["ready"]
+
+
+def test_submit_rejected_when_mode_disables(client, seed):
+    # Default test settings are PREPARE_APPLICATION / AUTO_SUBMIT=false:
+    # submit must be rejected with an actionable message instead of
+    # silently filling (which could never yield SUBMITTED/REQUIRES_HUMAN).
+    r = _execute(client, seed["ready"], "submit")
+    assert r.status_code == 409
+    assert "FULL_AUTO" in r.json()["detail"]
+
+
+def test_submit_rejected_when_already_submitted(client, seed):
+    assert _execute(client, seed["submitted"], "submit").status_code == 409
+
+
+def test_submit_rejected_when_uncertain(client, seed):
+    r = _execute(client, seed["human"], "submit")
+    assert r.status_code == 409
+    assert "retryable=false" in r.json()["detail"]
+
+
+def test_retry_allowed_only_from_failed(client, seed):
+    r = _execute(client, seed["failed"], "retry")
+    assert r.status_code == 200, r.text
+    assert r.json() == {
+        "id": seed["failed"],
+        "status": "READY_TO_SUBMIT",
+        "action": "retry",
+        "retryable": True,
+    }
+    assert _execute(client, seed["submitted"], "retry").status_code == 409
+    r = _execute(client, seed["human"], "retry")
+    assert r.status_code == 409
+    assert "retryable=false" in r.json()["detail"]
+    assert _execute(client, seed["running"], "retry").status_code == 409
+    assert _execute(client, seed["blocked"], "retry").status_code == 409
+
+
+def test_continue_returns_manual_workflow(client, seed):
+    r = _execute(client, seed["human"], "continue")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "REQUIRES_HUMAN"  # status untouched: no fake resume
+    assert body["application_url"] == "https://acme.example/j/1/apply"
+    assert len(body["manual_steps"]) >= 2
+    assert _execute(client, seed["created"], "continue").status_code == 409
+
+
+def test_unknown_action_rejected(client, seed):
+    assert _execute(client, seed["ready"], "explode").status_code == 422
+
+
+def test_missing_application_404(client):
+    assert _execute(client, str(uuid4()), "prepare").status_code == 404

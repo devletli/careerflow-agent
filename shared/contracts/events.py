@@ -70,6 +70,10 @@ class ApplicationBlockedEvent(BaseEvent):
     event_type: str = "application.blocked.v1"
 
 
+class ApplicationRequiresHumanEvent(BaseEvent):
+    event_type: str = "application.requires_human.v1"
+
+
 EVENT_TYPE_MAP: Dict[str, Type[BaseEvent]] = {
     "job.discovered.v1": JobDiscoveredEvent,
     "job.normalized.v1": JobNormalizedEvent,
@@ -82,6 +86,7 @@ EVENT_TYPE_MAP: Dict[str, Type[BaseEvent]] = {
     "application.submitted.v1": ApplicationSubmittedEvent,
     "application.failed.v1": ApplicationFailedEvent,
     "application.blocked.v1": ApplicationBlockedEvent,
+    "application.requires_human.v1": ApplicationRequiresHumanEvent,
 }
 
 
