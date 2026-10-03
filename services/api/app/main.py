@@ -884,7 +884,16 @@ async def create_manual_application(
             status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="A posting URL is required.",
         )
-    parsed = urlparse(url if "://" in url else f"https://{url}")
+    from shared.infra.urls import assert_public_http_url
+
+    try:
+        url = assert_public_http_url(url if "://" in url else f"https://{url}")
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Rejected posting URL: {exc}",
+        ) from exc
+    parsed = urlparse(url)
     domain = (parsed.netloc or "").removeprefix("www.")
     if not domain:
         raise HTTPException(

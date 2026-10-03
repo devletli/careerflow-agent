@@ -201,3 +201,15 @@ def test_unknown_action_rejected(client, seed):
 
 def test_missing_application_404(client):
     assert _execute(client, str(uuid4()), "prepare").status_code == 404
+
+
+def test_manual_rejects_non_public_urls(client):
+    for url in (
+        "file:///etc/passwd",
+        "ftp://example.com/x",
+        "http://127.0.0.1:8000/api/v1/status",
+        "http://10.0.0.5/apply",
+        "http://169.254.169.254/latest/meta-data/",
+    ):
+        r = client.post("/api/v1/applications/manual", json={"url": url})
+        assert r.status_code == 422, (url, r.text)

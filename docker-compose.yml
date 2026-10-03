@@ -191,7 +191,7 @@ services:
     mem_limit: 512m
     environment:
       API_INTERNAL_URL: http://api:8000
-      API_KEY: ${API_KEY:-}
+      API_KEY: ${API_KEY:?set API_KEY in .env}
       NEXT_PUBLIC_LOCALE: ${DASHBOARD_LOCALE:-en}
     depends_on:
       api:

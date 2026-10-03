@@ -54,6 +54,9 @@ class ApplicationAnalyzerWorker:
             app_url = job.application_url or job.url
             html_content = ""
             try:
+                from shared.infra.urls import assert_public_http_url
+
+                assert_public_http_url(app_url)
                 headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
                 async with httpx.AsyncClient(timeout=10.0, headers=headers, follow_redirects=True) as client:
                     resp = await client.get(app_url)
