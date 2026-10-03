@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { fetchJson, formatDate, StatusPill, STRINGS } from "../../lib";
 
@@ -110,7 +111,7 @@ export default function ApplicationDetail() {
   if (error || !data) {
     return (
       <main className="app-shell">
-        <a className="link" href="/">{STRINGS.backToApplications}</a>
+        <Link className="link" href="/">{STRINGS.backToApplications}</Link>
         <div className="error-banner">{error || id}</div>
       </main>
     );
@@ -118,7 +119,7 @@ export default function ApplicationDetail() {
 
   return (
     <main className="app-shell">
-      <a className="link" href="/">{STRINGS.backToApplications}</a>
+      <Link className="link" href="/">{STRINGS.backToApplications}</Link>
       <h1>{data.company} — {data.title}</h1>
       <div className="stat-grid">
         <div className="stat-card">

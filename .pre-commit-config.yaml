@@ -3,3 +3,10 @@ repos:
     rev: v8.24.3
     hooks:
       - id: gitleaks
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.13.0
+    hooks:
+      - id: ruff
+        args: ["check", ".", "--select", "F401,F841,F811,T201,T203,ERA001"]
+# NOTE (yama Faz 4): ruff-format hook'u bilerek yok — repo genelinde 78 dosya
+# formatsız; topyekün reformat ayrı bir commit'te onayla yapılmalı.

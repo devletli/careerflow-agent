@@ -1,0 +1,54 @@
+# Version control and CI
+.git/
+.github/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+*.egg-info/
+
+# Node / frontend build output
+node_modules/
+.next/
+out/
+services/frontend/node_modules/
+services/frontend/.next/
+
+# Local environment and secrets (mounted or required at runtime, never baked in)
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+
+# Personal data, artifacts, runtime state
+profile/*.pdf
+profile/*.yaml
+!profile/*.example.yaml
+artifacts/
+downloads/
+browser-state/
+browser-traces/
+cookies/
+storage_state.json
+*.har
+*.trace
+
+# Logs, editor, OS
+*.log
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docs and prompts are not needed inside service images
+*.md
+prompts/
+tests/
+evals/

@@ -4,11 +4,19 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "eslint app/ middleware.js",
+    "format:check": "prettier --check app/ middleware.js i18n/"
   },
   "dependencies": {
     "next": "15.5.0",
     "react": "19.1.1",
     "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.7",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.5.27",
+    "prettier": "^3.9.9"
   }
 }
