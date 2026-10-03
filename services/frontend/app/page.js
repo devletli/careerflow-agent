@@ -808,6 +808,7 @@ export default function Home() {
         ))}
       </div>
 
+      <div className="tab-body">
       {tab === "Overview" && (
         <OverviewTab
           status={statusQ.data}
@@ -843,6 +844,7 @@ export default function Home() {
         <EventsTab events={eventsQ.data} error={eventsQ.error} loading={eventsQ.loading} refresh={eventsQ.refresh} />
       )}
       {tab === "Settings" && <SettingsTab status={statusQ.data} />}
+      </div>
     </main>
   );
 }

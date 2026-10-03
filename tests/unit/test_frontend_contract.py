@@ -38,6 +38,19 @@ def test_scroll_css_rules_exist():
     assert re.search(r"\.tabs\s*\{[^}]*overflow-x:\s*auto", css), (
         ".tabs nav strip stays scrollable so all tabs remain reachable on narrow screens"
     )
+    assert re.search(r"\.tabs\s*\{[^}]*flex-shrink:\s*0", css), (
+        ".tabs is a flex item of the 100vh app shell and a scroll container, "
+        "so it must not shrink (otherwise it collapses to 1px and tabs vanish)"
+    )
+    assert re.search(r"\.tab-body\s*\{[^}]*overflow-y:\s*auto", css), (
+        "tab content must scroll inside .tab-body so the browser page never scrolls"
+    )
+    assert re.search(r"\.tab-body\s*\{[^}]*flex:\s*1", css), (
+        ".tab-body must fill the remaining viewport height"
+    )
+    assert '<div className="tab-body">' in PAGE.read_text(encoding="utf-8"), (
+        "tab panels must render inside .tab-body"
+    )
     assert re.search(r"\.tab\s*\{[^}]*white-space:\s*nowrap", css), ".tab needs white-space:nowrap"
     assert "@media (max-width:" in css and "table.responsive" in css, (
         "narrow viewports must stack table rows instead of scrolling"

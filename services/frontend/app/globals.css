@@ -125,6 +125,10 @@ body {
   margin-bottom: 16px;
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
+  /* Flex item inside 100vh .app-shell: as a scroll container its automatic
+     minimum size is zero, so without this it collapses to its 1px border
+     and the tab buttons become invisible + unclickable. */
+  flex-shrink: 0;
 }
 
 .tab {
@@ -440,40 +444,23 @@ a.link:hover {
   overflow: hidden;
 }
 
-.main-content {
+.app-header {
+  flex-shrink: 0;
+}
+
+/* The only scrollable region: the tab content fills the remaining viewport
+   height and scrolls internally, so the whole browser page never scrolls. */
+.tab-body {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
-}
-
-.tab-panel {
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.table-wrapper {
-  height: 100%;
-  min-height: 0;
-  overflow: auto;
-}
-
-@media (max-width: 700px) {
-  .table-wrapper {
-    overflow: auto;
-  }
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* Responsive table (item 32) */
 .table-fixed {
   width: 100%;
   table-layout: fixed;
-}
-
-.cell-truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* Action cells must remain visible (item 33) */

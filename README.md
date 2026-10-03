@@ -77,8 +77,8 @@ Future (not started): Ashby/SmartRecruiters submission adapters, larger evaluati
 docker compose up --build
 ```
 
-5. API: `http://localhost:8000` (`/health`, `/api/v1/status`, `/api/v1/jobs`, `/api/v1/applications`, `/api/v1/events`)
-6. Frontend dashboard: `http://localhost:3000` (Overview / Jobs / Applications / Events / Settings tabs, auto-refreshing every 10s). The Overview tab provides confirmed actions for discovery, matching, document generation, form analysis, and form filling.
+5. API: `http://localhost:8000` (`/health`, `/api/v1/status`, `/api/v1/jobs`, `/api/v1/applications`, `/api/v1/documents`, `/api/v1/events`). Per-application actions go through `PATCH /api/v1/applications/{id}/execute` with an explicit `{"action": "prepare"|"submit"|"retry"|"continue"}` body: submit queues the browser only in `FULL_AUTO` + `AUTO_SUBMIT=true` (otherwise 409), retry is allowed only from `FAILED`, and an unverified click yields `REQUIRES_HUMAN` instead of an automatic retry. Documents stream privately via `/api/v1/documents/{id}/file` (never a raw MinIO URL).
+6. Frontend dashboard: `http://localhost:3000` (Overview / Jobs / Documents / Applications / Events / Settings tabs, auto-refreshing every 10s). The Overview tab provides confirmed actions for discovery, matching, document generation, form analysis, and form filling. The Applications table shows exactly one action set per row based on backend status (`CREATED→Prepare`, `READY_TO_SUBMIT→Submit`, `RUNNING→View`, `REQUIRES_HUMAN→Continue`, `FAILED→Retry`, `SUBMITTED→Details`).
 7. MinIO Console: `http://127.0.0.1:9001` (credentials from `.env`: `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`)
 
 > **Note:** MinIO removed the `minio/minio` image from Docker Hub, so `docker-compose.yml` pins `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z` instead.
