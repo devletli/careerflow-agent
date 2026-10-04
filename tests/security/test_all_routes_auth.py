@@ -63,3 +63,11 @@ def test_every_api_route_rejects_missing_or_wrong_key(client):
 def test_health_stays_public(client):
     r = client.get("/health")
     assert r.status_code in (200, 503)
+
+
+def test_correlation_id_echoed_and_generated(client):
+    r = client.get("/health", headers={"X-Correlation-ID": "trace-123"})
+    assert r.headers.get("X-Correlation-ID") == "trace-123"
+    r2 = client.get("/health")
+    generated = r2.headers.get("X-Correlation-ID", "")
+    assert generated.startswith("req-")

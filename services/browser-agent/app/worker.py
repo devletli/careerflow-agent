@@ -12,7 +12,7 @@ from shared.db.models import Application
 from shared.db.session import check_db_health, get_session
 from shared.infra.redis_bus import RedisEventBus
 from shared.infra.heartbeat import beat
-from shared.infra.jsonlog import correlation
+from shared.infra.jsonlog import correlation, install_json_logging
 from shared.profile.loader import load_canonical_profile
 
 from app.engine import BrowserAutomationEngine
@@ -59,6 +59,8 @@ class BrowserAgentWorker:
 
     async def start(self, once: bool = False):
         self.running = True
+        if settings.LOG_FORMAT == "json":
+            install_json_logging()
         logger.info("Browser agent worker starting...")
 
         for _ in range(20):

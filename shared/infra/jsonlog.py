@@ -1,9 +1,8 @@
-"""Structured JSON logging with correlation ids (T7 observability).
+"""Structured JSON logging with correlation ids (T7 observability, B4 default).
 
-Opt-in via settings.LOG_FORMAT == "json". Every record carries
-`correlation_id` (plus job_id/application_id when bound), so a single
-pipeline event can be traced across services. Works alongside the PII
-redaction filter (redaction runs first, JSON encoding second).
+Varsayilan format json'dur (settings.LOG_FORMAT). Her kayit `correlation_id`
+(ve bagliysa job/entity id) tasir; degerler contextvar'dan otomatik alinir.
+PII redaksiyon filtresiyle birlikte calisir (once redaksiyon, sonra JSON).
 """
 import contextvars
 import json

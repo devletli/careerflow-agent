@@ -6,8 +6,9 @@ All /api/* routes live in app/routers/ with router-level API-key auth.
 """
 import logging
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -59,6 +60,18 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH"],
     allow_headers=["Content-Type", "X-API-Key"],
 )
+
+
+@app.middleware("http")
+async def correlation_middleware(request: Request, call_next):
+    """B4: X-Correlation-ID'yi al/uret, log context'ine yaz, yanita ekle."""
+    from shared.infra.jsonlog import correlation
+
+    cid = request.headers.get("X-Correlation-ID") or f"req-{uuid4().hex[:12]}"
+    with correlation(cid, ""):
+        response = await call_next(request)
+    response.headers["X-Correlation-ID"] = cid
+    return response
 
 
 @app.get("/health")

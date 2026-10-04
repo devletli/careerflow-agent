@@ -12,7 +12,7 @@ from shared.db.models import Job
 from shared.db.session import get_session, check_db_health
 from shared.infra.redis_bus import RedisEventBus
 from shared.infra.heartbeat import beat
-from shared.infra.jsonlog import correlation
+from shared.infra.jsonlog import correlation, install_json_logging
 from shared.profile.loader import load_canonical_profile
 from browser.site_adapters.discovery import (
     WorkableAdapter,
@@ -168,6 +168,8 @@ class JobDiscoveryWorker:
 
     async def start(self, once: bool = False, interval_seconds: int = 3600):
         self.running = True
+        if settings.LOG_FORMAT == "json":
+            install_json_logging()
         logger.info(f"Job discovery service initialized (once={once}, interval={interval_seconds}s)")
 
         # Wait for DB and Redis to be ready

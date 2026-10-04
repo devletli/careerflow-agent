@@ -23,7 +23,7 @@ from shared.db.models import (
 from shared.db.session import get_session, check_db_health
 from shared.infra.redis_bus import RedisEventBus
 from shared.infra.heartbeat import beat
-from shared.infra.jsonlog import correlation
+from shared.infra.jsonlog import correlation, install_json_logging
 from shared.profile.loader import load_canonical_profile
 from app.analyzer import FormAnalyzer
 
@@ -181,6 +181,8 @@ class ApplicationAnalyzerWorker:
 
     async def start(self, once: bool = False):
         self.running = True
+        if settings.LOG_FORMAT == "json":
+            install_json_logging()
         logger.info("Application analyzer worker starting...")
 
         for _ in range(15):

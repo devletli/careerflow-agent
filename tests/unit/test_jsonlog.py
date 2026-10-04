@@ -59,3 +59,27 @@ def test_api_action_logs_with_correlation_extra():
         / "services" / "api" / "app" / "routers" / "pipeline.py"
     ).read_text(encoding="utf-8")
     assert 'extra={"correlation_id": correlation_id' in src
+
+
+def test_default_log_format_is_json():
+    from shared.config import Settings
+
+    assert Settings.model_fields["LOG_FORMAT"].default == "json"
+
+
+def test_two_lines_share_one_correlation():
+    with correlation("corr-42", "job-7"):
+        first = json.loads(JsonFormatter().format(_record("step one")))
+        second = json.loads(JsonFormatter().format(_record("step two")))
+    assert first["correlation_id"] == second["correlation_id"] == "corr-42"
+    assert first["entity_id"] == second["entity_id"] == "job-7"
+
+
+def test_redaction_survives_json_handler():
+    from shared.infra.pii import PiiRedactingFilter
+
+    filt = PiiRedactingFilter()
+    record = _record("contact ada@example.com now")
+    assert filt.filter(record) is True
+    out = json.loads(JsonFormatter().format(record))
+    assert "ada@example.com" not in out["message"]

@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_REDACT_PII: bool = True
-    LOG_FORMAT: str = "text"  # text | json (json enables structured logs, see shared.infra.jsonlog)
+    LOG_FORMAT: str = "json"  # json varsayilan; text yalnizca gelistirme icin
 
     @model_validator(mode="after")
     def _check(self) -> "Settings":
