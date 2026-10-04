@@ -1,5 +1,6 @@
 import pytest
 import pytest_asyncio
+from pathlib import Path
 from uuid import uuid4
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.exc import IntegrityError
@@ -151,7 +152,10 @@ def test_dashboard_query_indexes_exist():
     """yama.md Faz 5-C: dashboard hot-path indexes must exist in metadata."""
     app_indexes = {ix.name for ix in Application.__table__.indexes}
     event_indexes = {ix.name for ix in PipelineEvent.__table__.indexes}
+    doc_indexes = {ix.name for ix in Document.__table__.indexes}
     assert "ix_applications_status_updated" in app_indexes
+    assert "ix_applications_job_id" in app_indexes  # Faz 4E
+    assert "ix_documents_job_type" in doc_indexes  # Faz 4E
     assert "ix_pipeline_events_created_at" in event_indexes
 
 
@@ -182,7 +186,50 @@ def test_dashboard_queries_use_indexes():
             ).all()
         )
         assert "ix_pipeline_events_created_at" in plan_ev, plan_ev
+        plan_app_job = " ".join(
+            row[3]
+            for row in conn.execute(
+                text(
+                    "EXPLAIN QUERY PLAN SELECT id FROM applications "
+                    "WHERE job_id = '00000000-0000-0000-0000-000000000000'"
+                )
+            ).all()
+        )
+        assert "ix_applications_job_id" in plan_app_job, plan_app_job
+        plan_doc = " ".join(
+            row[3]
+            for row in conn.execute(
+                text("EXPLAIN QUERY PLAN SELECT id FROM documents WHERE job_id = '00000000-0000-0000-0000-000000000000' AND type = 'cv'")
+            ).all()
+        )
+        assert "ix_documents_job_type" in plan_doc, plan_doc
     engine.dispose()
+
+
+def test_alembic_revision_chain_valid():
+    """Migration id'leri alembic_version VARCHAR(32)'ye sigar ve zincir kopsuzdur."""
+    import re
+
+    versions_dir = Path(__file__).resolve().parents[2] / "db" / "migrations" / "versions"
+    revs = {}
+    downs = {}
+    for path in sorted(versions_dir.glob("*.py")):
+        src = path.read_text(encoding="utf-8")
+        rev = re.search(r"^revision:\s*str\s*=\s*'([^']+)'", src, re.M).group(1)
+        down = re.search(r"^down_revision.*=\s*'([^']+)'", src, re.M)
+        assert len(rev) <= 32, f"{path.name}: revision id {len(rev)} chars > 32"
+        revs[rev] = path.name
+        downs[rev] = down.group(1) if down else None
+    assert len(revs) >= 1
+    heads = [r for r in revs if r not in set(downs.values())]
+    assert len(heads) == 1, f"tek head beklenir: {heads}"
+    seen = set()
+    current = heads[0]
+    while current is not None:
+        assert current not in seen, "dongu var"
+        seen.add(current)
+        current = downs[current]
+    assert seen == set(revs), "zincir disi revision var"
 
 
 @pytest.mark.asyncio
@@ -193,6 +240,7 @@ async def test_pipeline_event_creation(test_session: AsyncSession):
         event_type="job.discovered.v1",
         version="v1",
         correlation_id="corr-1",
+        idempotency_key=str(event_id),
         entity_id="job-1",
         entity_type="job",
         payload={"company": "Test"},
@@ -206,11 +254,46 @@ async def test_pipeline_event_creation(test_session: AsyncSession):
         event_type="job.discovered.v1",
         version="v1",
         correlation_id="corr-2",
+        idempotency_key=str(uuid4()),
         entity_id="job-2",
         entity_type="job",
         payload={"company": "Test 2"},
     )
     test_session.add(ev_dup)
+    with pytest.raises(IntegrityError):
+        await test_session.commit()
+    await test_session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_pipeline_event_idempotency_key_unique(test_session: AsyncSession):
+    """Faz 4A: ayni idempotency_key iki kez kaydedilemez (retry dedupe)."""
+    key = f"cmd-{uuid4().hex}"
+    test_session.add(
+        PipelineEvent(
+            event_id=uuid4(),
+            event_type="job.discovered.v1",
+            version="v1",
+            correlation_id="corr-1",
+            idempotency_key=key,
+            entity_id="job-1",
+            entity_type="job",
+            payload={},
+        )
+    )
+    await test_session.commit()
+    test_session.add(
+        PipelineEvent(
+            event_id=uuid4(),
+            event_type="job.discovered.v1",
+            version="v1",
+            correlation_id="corr-1",
+            idempotency_key=key,
+            entity_id="job-1",
+            entity_type="job",
+            payload={},
+        )
+    )
     with pytest.raises(IntegrityError):
         await test_session.commit()
     await test_session.rollback()

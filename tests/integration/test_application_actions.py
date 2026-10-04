@@ -110,8 +110,20 @@ def client(seed):
     yield __import__("fastapi.testclient", fromlist=["TestClient"]).TestClient(_api.app)
 
 
-def _execute(client, app_id, action):
-    return client.patch(f"/api/v1/applications/{app_id}/execute", json={"action": action})
+def _execute(client, app_id, action, token=None):
+    body = {"action": action}
+    if token is not None:
+        body["confirmation_token"] = token
+    return client.patch(f"/api/v1/applications/{app_id}/execute", json=body)
+
+
+def _mint(client, action, application_id=None):
+    body = {"action": action}
+    if application_id is not None:
+        body["application_id"] = application_id
+    r = client.post("/api/v1/confirmations", json=body)
+    assert r.status_code == 200, r.text
+    return r.json()["confirmation_token"]
 
 
 def test_prepare_transitions_created_to_ready(client, seed):
@@ -138,7 +150,8 @@ def test_submit_queues_from_ready(client, seed, monkeypatch):
     with patch.object(
         _api.redis_bus, "publish", new=AsyncMock(return_value="msg-1")
     ) as publish:
-        r = _execute(client, seed["ready"], "submit")
+        token = _mint(client, "submit", seed["ready"])
+        r = _execute(client, seed["ready"], "submit", token=token)
     assert r.status_code == 202, r.text
     body = r.json()
     assert body["action"] == "submit"
@@ -153,7 +166,12 @@ def test_submit_rejected_when_mode_disables(client, seed):
     # Default test settings are PREPARE_APPLICATION / AUTO_SUBMIT=false:
     # submit must be rejected with an actionable message instead of
     # silently filling (which could never yield SUBMITTED/REQUIRES_HUMAN).
+    # Faz 3B: UI onayina guvenilmez; once token sart.
     r = _execute(client, seed["ready"], "submit")
+    assert r.status_code == 409
+    assert "confirmation token" in r.json()["detail"]
+    token = _mint(client, "submit", seed["ready"])
+    r = _execute(client, seed["ready"], "submit", token=token)
     assert r.status_code == 409
     assert "FULL_AUTO" in r.json()["detail"]
 
@@ -243,3 +261,57 @@ def test_pipeline_action_allowed_when_limiter_passes(client, seed, monkeypatch):
             json={"action": "discover", "confirmed": False},
         )
     assert r.status_code == 202, r.text
+
+
+def test_confirmations_reject_unknown_action(client, seed):
+    r = client.post("/api/v1/confirmations", json={"action": "explode"})
+    assert r.status_code == 422
+
+
+def test_confirmations_require_app_for_submit(client, seed):
+    assert client.post("/api/v1/confirmations", json={"action": "submit"}).status_code == 422
+    r = client.post(
+        "/api/v1/confirmations",
+        json={"action": "submit", "application_id": seed["ready"]},
+    )
+    assert r.status_code == 200
+    assert r.json()["expires_in"] == 300
+
+
+def test_pipeline_fill_requires_single_use_token(client, seed, monkeypatch):
+    async def allow(action, redis):
+        return None
+
+    monkeypatch.setattr(_api, "check_action_limit", allow)
+    with patch.object(
+        _api.redis_bus, "publish", new=AsyncMock(return_value="msg-1")
+    ):
+        base = {"action": "fill_applications", "confirmed": True}
+        r = client.post("/api/v1/pipeline/actions", json=base)
+        assert r.status_code == 409
+        assert "confirmation token" in r.json()["detail"]
+        token = _mint(client, "fill_applications")
+        r = client.post("/api/v1/pipeline/actions", json={**base, "confirmation_token": token})
+        assert r.status_code == 202, r.text
+        # Ayni token ikinci kez gecersiz.
+        r = client.post("/api/v1/pipeline/actions", json={**base, "confirmation_token": token})
+        assert r.status_code == 409
+
+
+def test_pipeline_token_bound_to_action(client, seed, monkeypatch):
+    async def allow(action, redis):
+        return None
+
+    monkeypatch.setattr(_api, "check_action_limit", allow)
+    token = _mint(client, "fill_applications")
+    r = client.post(
+        "/api/v1/pipeline/actions",
+        json={
+            "action": "submit_application",
+            "confirmed": True,
+            "application_id": seed["ready"],
+            "confirmation_token": token,
+        },
+    )
+    assert r.status_code == 409
+    assert "confirmation token" in r.json()["detail"]

@@ -54,6 +54,7 @@ browser-trace/
 browser-traces/
 cookies/
 *.pdf
+!tests/fixtures/**/*.pdf
 storage_state.json
 playwright-report/
 test-results/

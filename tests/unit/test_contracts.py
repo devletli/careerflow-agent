@@ -37,6 +37,33 @@ def test_base_event_serialization():
     assert event.timestamp is not None
 
 
+def test_idempotency_key_defaults_to_event_id():
+    # Faz 4A: ayni mantiksal komutun retry yayinlari ayni anahtari tasir.
+    event = BaseEvent(
+        event_type="test.event.v1",
+        correlation_id="corr-123",
+        entity_id="ent-456",
+    )
+    assert event.idempotency_key == event.event_id
+    assert event.idempotency_key in event.to_json()
+
+
+def test_idempotency_key_survives_republish_roundtrip():
+    event = JobDiscoveredEvent(correlation_id="corr-1", entity_id="ent-1")
+    republished = parse_event(event.to_json())
+    assert republished.idempotency_key == event.idempotency_key == event.event_id
+
+
+def test_explicit_idempotency_key_preserved():
+    event = BaseEvent(
+        event_type="test.event.v1",
+        correlation_id="corr-123",
+        entity_id="ent-456",
+        idempotency_key="cmd-42",
+    )
+    assert event.idempotency_key == "cmd-42"
+
+
 def test_typed_events_and_parser():
     events_to_test = [
         ("job.discovered.v1", JobDiscoveredEvent),

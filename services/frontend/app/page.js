@@ -36,6 +36,16 @@ function usePersistentState(key, initial) {
   return [value, set];
 }
 
+function useDebouncedValue(value, delayMs = 350) {
+  // Backend filtreleri (?q=) her tuşta değil, yazım durunca tetiklenir.
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(id);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 function useTheme() {
   const [theme, setTheme] = useState("light");
 
@@ -61,13 +71,14 @@ function useTheme() {
 
 function ThemeToggle({ theme, onToggle }) {
   const isDark = theme === "dark";
+  const label = isDark ? STRINGS.themeLight : STRINGS.themeDark;
   return (
     <button
       type="button"
       className="theme-toggle"
       onClick={onToggle}
-      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      aria-label={label}
+      title={label}
     >
       {isDark ? (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -123,7 +134,7 @@ function HealthBadges({ health }) {
     <div className="health-badges">
       <span className={`badge`}>
         <span className={`dot ${health ? (health.status === "ok" ? "ok" : "bad") : "unknown"}`} />
-        API {health ? health.status : "unknown"}
+        API {health ? health.status : STRINGS.statusUnknown}
       </span>
       {names.map((n) => (
         <span className="badge" key={n}>
@@ -179,10 +190,10 @@ function Toolbar({ label, onRefresh, count }) {
     <div className="toolbar">
       <span className="muted">
         {label}
-        {typeof count === "number" ? ` — ${count} shown` : ""}
+        {typeof count === "number" ? ` — ${STRINGS.countShown.replace("{count}", count)}` : ""}
       </span>
       <button className="refresh-btn" onClick={onRefresh}>
-        Refresh
+        {STRINGS.refresh}
       </button>
     </div>
   );
@@ -232,8 +243,8 @@ const ACTIONS = STRINGS.actions;
 function ActionPanel({ onRun, runningAction, actionMessage }) {
   return (
     <div className="panel" style={{ marginBottom: 16 }}>
-      <h3 style={{ marginTop: 0 }}>Pipeline Controls</h3>
-      <p className="muted">Each action is queued and executed safely by the responsible worker.</p>
+      <h3 style={{ marginTop: 0 }}>{STRINGS.pipelineControls}</h3>
+      <p className="muted">{STRINGS.pipelineControlsDesc}</p>
       {actionMessage && <div className="action-message">{actionMessage}</div>}
       <div className="action-grid">
         {ACTIONS.map((action) => (
@@ -245,13 +256,20 @@ function ActionPanel({ onRun, runningAction, actionMessage }) {
               disabled={Boolean(runningAction)}
               onClick={() => onRun(action)}
             >
-              {runningAction === action.id ? "Queueing…" : action.label}
+              {runningAction === action.id ? STRINGS.queueing : action.label}
             </button>
           </div>
         ))}
       </div>
     </div>
   );
+}
+
+function formatLlmStatus(llm) {
+  if (!llm || !llm.state) return STRINGS.statusUnknown;
+  const model = llm.model ? ` (${llm.model})` : "";
+  const reason = llm.reason ? ` — ${llm.reason}` : "";
+  return `${llm.state}${model}${reason}`;
 }
 
 function OverviewTab({ status, jobs, applications, events, eventsLoading, onRun, runningAction, actionMessage }) {
@@ -266,103 +284,103 @@ function OverviewTab({ status, jobs, applications, events, eventsLoading, onRun,
       <div className="stat-grid">
         <div className="stat-card">
           <div className="value">{jobCount}</div>
-          <div className="label">Recent Jobs</div>
+          <div className="label">{STRINGS.statJobs}</div>
         </div>
         <div className="stat-card">
           <div className="value">{appCount}</div>
-          <div className="label">Recent Applications</div>
+          <div className="label">{STRINGS.statApplications}</div>
         </div>
         <div className="stat-card">
           <div className="value">{submitted}</div>
-          <div className="label">Submitted</div>
+          <div className="label">{STRINGS.statSubmitted}</div>
         </div>
         <div className="stat-card">
           <div className="value">{blocked}</div>
-          <div className="label">Blocked</div>
+          <div className="label">{STRINGS.statBlocked}</div>
         </div>
       </div>
       <div className="panel">
-        <h3 style={{ marginTop: 0 }}>Automation Configuration</h3>
+        <h3 style={{ marginTop: 0 }}>{STRINGS.automationConfig}</h3>
         {status ? (
           <div className="settings-grid">
             <div className="settings-item">
-              <div className="label">Automation Mode</div>
+              <div className="label">{STRINGS.automationMode}</div>
               <div className="value">{status.automation_mode}</div>
             </div>
             <div className="settings-item">
-              <div className="label">Auto Submit</div>
+              <div className="label">{STRINGS.autoSubmit}</div>
               <div className="value">{String(status.auto_submit)}</div>
             </div>
             <div className="settings-item">
-              <div className="label">Min Match Score</div>
+              <div className="label">{STRINGS.minMatchScoreLabel}</div>
               <div className="value">{status.min_match_score}</div>
+            </div>
+            <div className="settings-item">
+              <div className="label">{STRINGS.llmLabel}</div>
+              <div className="value">{formatLlmStatus(status.llm_status)}</div>
             </div>
           </div>
         ) : (
-          <p className="muted">Loading status…</p>
+          <p className="muted">{STRINGS.loadingStatus}</p>
         )}
       </div>
       <div className="panel" style={{ marginTop: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Latest Pipeline Events</h3>
+        <h3 style={{ marginTop: 0 }}>{STRINGS.latestEvents}</h3>
         <EventsTable events={(events || []).slice(0, 8)} loading={eventsLoading} />
       </div>
     </div>
   );
 }
 
-function JobsTab({ jobs, error, loading, refresh }) {
-  const [query, setQuery] = usePersistentState("jobs.query", "");
-  const filtered = (jobs || []).filter((j) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return `${j.title || ""} ${j.company || ""} ${j.url || ""}`.toLowerCase().includes(q);
-  });
+function JobsTab({ jobs, query, onQueryChange, error, loading, refresh }) {
+  // Filtreleme backend'de (?q=); burada yalnızca backend yanıtı render edilir.
+  const rows = jobs || [];
   return (
     <div className="panel">
-      <Toolbar label="Discovered / matched jobs" onRefresh={refresh} count={filtered?.length} />
-      <SearchBar value={query} onChange={setQuery} />
+      <Toolbar label={STRINGS.jobsToolbar} onRefresh={refresh} count={rows?.length} />
+      <SearchBar value={query} onChange={onQueryChange} />
       {error && <div className="error-banner">{error}</div>}
       <table className="responsive">
         <thead>
           <tr>
-            <th>Job</th>
-            <th>Location</th>
-            <th>Status</th>
-            <th>Match</th>
-            <th>Docs</th>
-            <th>Updated</th>
-            <th>Link</th>
+            <th>{STRINGS.colJob}</th>
+            <th>{STRINGS.colLocation}</th>
+            <th>{STRINGS.colStatus}</th>
+            <th>{STRINGS.colMatch}</th>
+            <th>{STRINGS.colDocs}</th>
+            <th>{STRINGS.colUpdated}</th>
+            <th>{STRINGS.colLink}</th>
           </tr>
         </thead>
         <tbody>
-          {filtered.map((j) => (
+          {rows.map((j) => (
             <tr key={j.id}>
-              <td data-label="Job" className="cell-main">
+              <td data-label={STRINGS.colJob} className="cell-main">
                 <div className="cell-title" title={j.title}>{j.title}</div>
                 <div className="cell-sub" title={`${j.company} • ${j.source}`}>{j.company} • {j.source}</div>
               </td>
-              <td data-label="Location" className="cell-main">
+              <td data-label={STRINGS.colLocation} className="cell-main">
                 <div className="cell-title" title={j.location || "-"}>{j.location || "-"}</div>
                 <div className="cell-sub">{j.remote_status || ""}</div>
               </td>
-              <td data-label="Status"><StatusPill status={j.status} /></td>
-              <td data-label="Match" className="cell-main">
+              <td data-label={STRINGS.colStatus}><StatusPill status={j.status} /></td>
+              <td data-label={STRINGS.colMatch} className="cell-main">
                 <div className="cell-title">{j.match_score ?? "-"}</div>
                 <div className="cell-sub">{j.qualification_status || ""}</div>
               </td>
-              <td data-label="Docs">{j.document_count ?? 0}</td>
-              <td data-label="Updated" className="cell-wrap">{formatDate(j.created_at)}</td>
-              <td data-label="Link">
+              <td data-label={STRINGS.colDocs}>{j.document_count ?? 0}</td>
+              <td data-label={STRINGS.colUpdated} className="cell-wrap">{formatDate(j.created_at)}</td>
+              <td data-label={STRINGS.colLink}>
                 <a className="link" href={j.url} target="_blank" rel="noreferrer">
-                  View
+                  {STRINGS.viewLink}
                 </a>
               </td>
             </tr>
           ))}
-          {filtered.length === 0 && (
+          {rows.length === 0 && (
             <tr>
               <td colSpan={7} className="muted">
-                {loading ? "Loading…" : "No jobs discovered yet."}
+                {loading ? STRINGS.loading : STRINGS.noJobs}
               </td>
             </tr>
           )}
@@ -441,19 +459,11 @@ function DocBadges({ docs }) {
   );
 }
 
-function ApplicationsTab({ applications, error, loading, refresh, onExecute, busyId }) {
-  const [query, setQuery] = usePersistentState("applications.query", "");
-  const [statusFilter, setStatusFilter] = usePersistentState("applications.status", "");
-  const [minScore, setMinScore] = usePersistentState("applications.minScore", "");
+function ApplicationsTab({ applications, query, onQueryChange, statusFilter, onStatusChange, minScore, onMinScoreChange, error, loading, refresh, onExecute, busyId }) {
+  // Filtreleme backend'de (?q=&status=&min_score=); burada yalnızca yanıt render edilir.
+  const rows = applications || [];
   const [dialogOpen, setDialogOpen] = useState(false);
   const [notice, setNotice] = useState("");
-  const filtered = (applications || []).filter((a) => {
-    const q = query.trim().toLowerCase();
-    const matchesQ = !q || `${a.company || ""} ${a.title || ""}`.toLowerCase().includes(q);
-    const matchesS = !statusFilter || a.status === statusFilter;
-    const matchesScore = !minScore || (a.match_score ?? -1) >= Number(minScore);
-    return matchesQ && matchesS && matchesScore;
-  });
   // Available actions per application status (P0). Legacy backend
   // statuses are normalized so no row ever shows a wrong action set.
   function getAvailableActions(application) {
@@ -481,7 +491,7 @@ function ApplicationsTab({ applications, error, loading, refresh, onExecute, bus
   
   return (
     <div className="panel">
-      <Toolbar label="Application history" onRefresh={refresh} count={filtered?.length} />
+      <Toolbar label={STRINGS.appHistory} onRefresh={refresh} count={rows?.length} />
       <div className="toolbar">
         <button className="refresh-btn primary-btn" onClick={() => setDialogOpen(true)}>
           {STRINGS.addViaUrl}
@@ -490,12 +500,12 @@ function ApplicationsTab({ applications, error, loading, refresh, onExecute, bus
       {notice && <div className="action-message">{notice}</div>}
       <SearchBar
         value={query}
-        onChange={setQuery}
+        onChange={onQueryChange}
         statusValue={statusFilter}
-        onStatusChange={setStatusFilter}
+        onStatusChange={onStatusChange}
         statuses={distinctStatuses(applications)}
         minScore={minScore}
-        onMinScoreChange={setMinScore}
+        onMinScoreChange={onMinScoreChange}
         showScore
       />
       {error && <div className="error-banner">{error}</div>}
@@ -511,7 +521,7 @@ function ApplicationsTab({ applications, error, loading, refresh, onExecute, bus
           </tr>
         </thead>
         <tbody>
-          {filtered.map((a) => {
+          {rows.map((a) => {
             const actions = getAvailableActions(a);
             return (
             <tr key={a.id}>
@@ -532,44 +542,44 @@ function ApplicationsTab({ applications, error, loading, refresh, onExecute, bus
               <td data-label={STRINGS.colActions} className="application-actions actions-sticky">
                   {actions.includes("prepare") && (
                     <button className="refresh-btn" onClick={() => onExecute(a, "prepare")} disabled={busyId === a.id}>
-                      Prepare
+                      {STRINGS.prepareBtn}
                     </button>
                   )}
                   {actions.includes("submit") && (
                     <button className="refresh-btn primary-btn" onClick={() => onExecute(a, "submit")} disabled={busyId === a.id}>
-                      Submit
+                      {STRINGS.submitBtn}
                     </button>
                   )}
                   {/* Retained: ai-job-agent://prepare is the desktop-runner entry
                       point, handled by scripts/desktop_runner.py. */}
                   {actions.includes("view") && (
                     <a className="link" href={`ai-job-agent://prepare?application_id=${a.id}`}>
-                      View progress
+                      {STRINGS.viewProgress}
                     </a>
                   )}
                   {actions.includes("continue") && (
                     <button className="refresh-btn" onClick={() => onExecute(a, "continue")} disabled={busyId === a.id}>
-                      Continue manually
+                      {STRINGS.continueManual}
                     </button>
                   )}
                   {actions.includes("retry") && (
                     <button className="refresh-btn" onClick={() => onExecute(a, "retry")} disabled={busyId === a.id}>
-                      Retry
+                      {STRINGS.retryBtn}
                     </button>
                   )}
                   {actions.includes("details") && (
                     <a className="link" href={`/applications/${a.id}`}>
-                      View details
+                      {STRINGS.goToDetail}
                     </a>
                   )}
                 </td>
             </tr>
             );
           })}
-          {filtered.length === 0 && (
+          {rows.length === 0 && (
             <tr>
               <td colSpan={6} className="muted">
-                {loading ? "Loading…" : "No applications yet."}
+                {loading ? STRINGS.loading : STRINGS.noApplications}
               </td>
             </tr>
           )}
@@ -592,17 +602,14 @@ function docTypeLabel(type) {
   return type === "cover_letter" ? "CL" : "CV";
 }
 
-function DocumentsTab({ documents, error, loading, refresh }) {
-  const [query, setQuery] = usePersistentState("documents.query", "");
-  const filtered = (documents || []).filter((d) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return `${d.company || ""} ${d.job_title || ""} ${d.type || ""}`.toLowerCase().includes(q);
-  });
+function DocumentsTab({ documents, query, onQueryChange, error, loading, refresh }) {
+  // Liste: job+tur basina SON surum; eski surumler yalnizca detay sayfasinda.
+  // Arama backend'de (?q=).
+  const rows = (documents || []).filter((d) => d.is_latest);
   return (
     <div className="panel">
-      <Toolbar label="Generated CVs and cover letters" onRefresh={refresh} count={filtered?.length} />
-      <SearchBar value={query} onChange={setQuery} />
+      <Toolbar label={STRINGS.docsToolbar} onRefresh={refresh} count={rows?.length} />
+      <SearchBar value={query} onChange={onQueryChange} />
       {error && <div className="error-banner">{error}</div>}
       <table className="responsive">
         <thead>
@@ -614,16 +621,13 @@ function DocumentsTab({ documents, error, loading, refresh }) {
           </tr>
         </thead>
         <tbody>
-          {filtered.map((document) => (
+          {rows.map((document) => (
             <tr key={document.id}>
               <td data-label={STRINGS.colType} className="cell-main">
                 <div className="cell-title">
                   {docTypeLabel(document.type)}
                   <span className="lang-badge">{document.language.toUpperCase()}</span>
                   {document.is_latest && <span className="latest-badge">{STRINGS.latestBadge}</span>}
-                </div>
-                <div className="cell-sub" title={document.created_at}>
-                  {document.created_at}
                 </div>
               </td>
               <td data-label={`${STRINGS.colCompany} · ${STRINGS.colJob}`} className="cell-main">
@@ -646,15 +650,15 @@ function DocumentsTab({ documents, error, loading, refresh }) {
                   href={document.view_url}
                   target="_blank"
                   rel="noreferrer"
-                  title={STRINGS.viewFile}
+                  title={`${STRINGS.viewFile} • ${document.created_at || ""}`}
                 >
                   {STRINGS.viewFile}
                 </a>
               </td>
             </tr>
           ))}
-          {filtered.length === 0 && (
-            <tr><td colSpan={4} className="muted">{loading ? "Loading…" : "No documents generated yet."}</td></tr>
+          {rows.length === 0 && (
+            <tr><td colSpan={4} className="muted">{loading ? STRINGS.loading : STRINGS.noDocumentsYet}</td></tr>
           )}
         </tbody>
       </table>
@@ -667,25 +671,25 @@ function EventsTable({ events, loading }) {
     <table className="responsive">
       <thead>
         <tr>
-          <th>Event Type</th>
-          <th>Entity</th>
-          <th>Correlation</th>
-          <th>Timestamp</th>
+          <th>{STRINGS.colEventType}</th>
+          <th>{STRINGS.colEntity}</th>
+          <th>{STRINGS.colCorrelation}</th>
+          <th>{STRINGS.colTimestamp}</th>
         </tr>
       </thead>
       <tbody>
         {(events || []).map((e) => (
           <tr key={e.event_id}>
-            <td data-label="Event Type">{e.event_type}</td>
-            <td data-label="Entity">{(e.entity_id || "").slice(0, 8)}…</td>
-            <td data-label="Correlation">{e.correlation_id}</td>
-            <td data-label="Timestamp" className="cell-wrap">{formatDate(e.timestamp)}</td>
+            <td data-label={STRINGS.colEventType}>{e.event_type}</td>
+            <td data-label={STRINGS.colEntity}>{(e.entity_id || "").slice(0, 8)}…</td>
+            <td data-label={STRINGS.colCorrelation}>{e.correlation_id}</td>
+            <td data-label={STRINGS.colTimestamp} className="cell-wrap">{formatDate(e.timestamp)}</td>
           </tr>
         ))}
         {(!events || events.length === 0) && (
           <tr>
             <td colSpan={4} className="muted">
-              {loading ? "Loading…" : "No pipeline events recorded yet."}
+              {loading ? STRINGS.loading : STRINGS.noEventsYet}
             </td>
           </tr>
         )}
@@ -694,10 +698,12 @@ function EventsTable({ events, loading }) {
   );
 }
 
-function EventsTab({ events, error, loading, refresh }) {
+function EventsTab({ events, query, onQueryChange, error, loading, refresh }) {
+  // Arama backend'de (?q=).
   return (
     <div className="panel">
-      <Toolbar label="Pipeline event stream (monitor)" onRefresh={refresh} count={events?.length} />
+      <Toolbar label={STRINGS.latestEvents} onRefresh={refresh} count={events?.length} />
+      <SearchBar value={query} onChange={onQueryChange} />
       {error && <div className="error-banner">{error}</div>}
       <EventsTable events={events} loading={loading} />
     </div>
@@ -707,36 +713,39 @@ function EventsTab({ events, error, loading, refresh }) {
 function SettingsTab({ status }) {
   return (
     <div className="panel">
-      <h3 style={{ marginTop: 0 }}>Runtime Settings</h3>
+      <h3 style={{ marginTop: 0 }}>{STRINGS.runtimeSettings}</h3>
       <p className="muted">
-        These values are read-only in the dashboard; change them via the <code>.env</code> file
-        and restart the stack with <code>docker compose up -d</code>.
+        {STRINGS.settingsHintA} <code>.env</code> {STRINGS.settingsHintB} <code>docker compose up -d</code>.
       </p>
       {status ? (
         <div className="settings-grid">
           <div className="settings-item">
-            <div className="label">Service</div>
+            <div className="label">{STRINGS.colService}</div>
             <div className="value">{status.service}</div>
           </div>
           <div className="settings-item">
-            <div className="label">Version</div>
+            <div className="label">{STRINGS.colVersion}</div>
             <div className="value">{status.version}</div>
           </div>
           <div className="settings-item">
-            <div className="label">Automation Mode</div>
+            <div className="label">{STRINGS.automationMode}</div>
             <div className="value">{status.automation_mode}</div>
           </div>
           <div className="settings-item">
-            <div className="label">Auto Submit</div>
+            <div className="label">{STRINGS.autoSubmit}</div>
             <div className="value">{String(status.auto_submit)}</div>
           </div>
           <div className="settings-item">
-            <div className="label">Min Match Score</div>
+            <div className="label">{STRINGS.minMatchScoreLabel}</div>
             <div className="value">{status.min_match_score}</div>
+          </div>
+          <div className="settings-item">
+            <div className="label">{STRINGS.llmLabel}</div>
+            <div className="value">{formatLlmStatus(status.llm_status)}</div>
           </div>
         </div>
       ) : (
-        <p className="muted">Loading…</p>
+        <p className="muted">{STRINGS.loading}</p>
       )}
     </div>
   );
@@ -773,11 +782,34 @@ export default function Home() {
       // non-browser render: state update above is enough
     }
   }, []);
+  // Filtre state'leri burada tutulur: hem localStorage'da kalici (sekme
+  // degisiminde sifirlanmaz) hem de backend ?q=/status/min_score
+  // parametrelerine debounce ile baglanir.
+  const [jobsQuery, setJobsQuery] = usePersistentState("jobs.query", "");
+  const [appsQuery, setAppsQuery] = usePersistentState("applications.query", "");
+  const [appsStatus, setAppsStatus] = usePersistentState("applications.status", "");
+  const [appsMinScore, setAppsMinScore] = usePersistentState("applications.minScore", "");
+  const [docsQuery, setDocsQuery] = usePersistentState("documents.query", "");
+  const [eventsQuery, setEventsQuery] = usePersistentState("events.query", "");
+
+  const dJobsQuery = useDebouncedValue(jobsQuery).trim();
+  const dAppsQuery = useDebouncedValue(appsQuery).trim();
+  const dDocsQuery = useDebouncedValue(docsQuery).trim();
+  const dEventsQuery = useDebouncedValue(eventsQuery).trim();
+  const qParam = (v) => (v ? `&q=${encodeURIComponent(v)}` : "");
+  const appsScoreParam =
+    appsMinScore !== "" && !Number.isNaN(Number(appsMinScore))
+      ? `&min_score=${encodeURIComponent(appsMinScore)}`
+      : "";
+  const appsStatusParam = appsStatus ? `&status=${encodeURIComponent(appsStatus)}` : "";
+
   const statusQ = usePolling("/api/v1/status");
-  const jobsQ = usePolling("/api/v1/jobs?limit=100");
-  const applicationsQ = usePolling("/api/v1/applications?limit=100");
-  const documentsQ = usePolling("/api/v1/documents?limit=100");
-  const eventsQ = usePolling("/api/v1/events?limit=50");
+  const jobsQ = usePolling(`/api/v1/jobs?limit=100${qParam(dJobsQuery)}`);
+  const applicationsQ = usePolling(
+    `/api/v1/applications?limit=100${qParam(dAppsQuery)}${appsStatusParam}${appsScoreParam}`
+  );
+  const documentsQ = usePolling(`/api/v1/documents?limit=100${qParam(dDocsQuery)}`);
+  const eventsQ = usePolling(`/api/v1/events?limit=50${qParam(dEventsQuery)}`);
 
   const runAction = useCallback(async (action) => {
     const requiresExtraWarning = action.id === "fill_applications";
@@ -789,10 +821,21 @@ export default function Home() {
     setRunningAction(action.id);
     setActionMessage("");
     try {
+      // Faz 3B: UI onayina guvenilmez; browser aksiyonu icin sunucudan
+      // tek kullanimlik token alinir ve ayni istekte tuketilir.
+      let confirmationToken;
+      if (action.id === "fill_applications" || action.id === "submit_application") {
+        const conf = await fetchJson("/api/v1/confirmations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: action.id }),
+        });
+        confirmationToken = conf.confirmation_token;
+      }
       const result = await fetchJson("/api/v1/pipeline/actions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: action.id, confirmed: true }),
+        body: JSON.stringify({ action: action.id, confirmed: true, confirmation_token: confirmationToken }),
       });
       setActionMessage(`${action.label} queued (${result.correlation_id}).`);
       setTimeout(() => {
@@ -817,12 +860,18 @@ export default function Home() {
       setRunningAction(application.id);
       setActionMessage("");
       try {
+        // Faz 3B: tek kullanimlik sunucu tokeni olmadan submit kuyruga girmez.
+        const conf = await fetchJson("/api/v1/confirmations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "submit", application_id: application.id }),
+        });
         // Explicit semantic action: the backend validates state, duplicate
         // and automation-mode guards, then queues the browser submission.
         const result = await fetchJson(`/api/v1/applications/${application.id}/execute`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "submit" }),
+          body: JSON.stringify({ action: "submit", confirmation_token: conf.confirmation_token }),
         });
         setActionMessage(`Submission for ${name} queued (${result.correlation_id}).`);
         setTimeout(() => {
@@ -866,17 +915,20 @@ export default function Home() {
   return (
     <main className="app-shell">
       <div className="app-header">
-        <h1>AI Job Agent</h1>
+        <h1>{STRINGS.appTitle}</h1>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <HealthBadges health={health} />
           <ThemeToggle theme={theme} onToggle={toggle} />
         </div>
       </div>
 
-      <div className="tabs">
+      <div className="tabs" role="tablist" aria-label={STRINGS.appTitle}>
         {TABS.map((t) => (
           <button
             key={t}
+            role="tab"
+            aria-selected={tab === t}
+            aria-current={tab === t ? "page" : undefined}
             className={`tab ${tab === t ? "active" : ""}`}
             onClick={() => selectTab(t)}
           >
@@ -898,10 +950,16 @@ export default function Home() {
           actionMessage={actionMessage}
         />
       )}
-      {tab === "Jobs" && <JobsTab jobs={jobsQ.data} error={jobsQ.error} loading={jobsQ.loading} refresh={jobsQ.refresh} />}
+      {tab === "Jobs" && <JobsTab jobs={jobsQ.data} query={jobsQuery} onQueryChange={setJobsQuery} error={jobsQ.error} loading={jobsQ.loading} refresh={jobsQ.refresh} />}
       {tab === "Applications" && (
         <ApplicationsTab
           applications={applicationsQ.data}
+          query={appsQuery}
+          onQueryChange={setAppsQuery}
+          statusFilter={appsStatus}
+          onStatusChange={setAppsStatus}
+          minScore={appsMinScore}
+          onMinScoreChange={setAppsMinScore}
           error={applicationsQ.error}
           loading={applicationsQ.loading}
           refresh={applicationsQ.refresh}
@@ -912,13 +970,15 @@ export default function Home() {
       {tab === "Documents" && (
         <DocumentsTab
           documents={documentsQ.data}
+          query={docsQuery}
+          onQueryChange={setDocsQuery}
           error={documentsQ.error}
           loading={documentsQ.loading}
           refresh={documentsQ.refresh}
         />
       )}
       {tab === "Events" && (
-        <EventsTab events={eventsQ.data} error={eventsQ.error} loading={eventsQ.loading} refresh={eventsQ.refresh} />
+        <EventsTab events={eventsQ.data} query={eventsQuery} onQueryChange={setEventsQuery} error={eventsQ.error} loading={eventsQ.loading} refresh={eventsQ.refresh} />
       )}
       {tab === "Settings" && <SettingsTab status={statusQ.data} />}
       </div>

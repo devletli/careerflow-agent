@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+from contextlib import asynccontextmanager
 from io import BytesIO
 from uuid import UUID, uuid4
 
@@ -14,6 +15,7 @@ import logging
 
 from app.errors import DomainError, domain_error_handler, unhandled_handler
 from app.security import ApiKey
+from app import confirmations
 from shared.config import settings
 from shared.db.session import get_db_session, check_db_health
 from shared.db.models import (
@@ -32,10 +34,24 @@ from shared.contracts.events import BaseEvent
 
 logger = logging.getLogger("api")
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Faz 1C: LLM modelini acilista dogrula; boot asla dusmez.
+    try:
+        from shared.llm.models import validate_llm_at_startup
+
+        await validate_llm_at_startup()
+    except Exception as exc:  # noqa: BLE001 - dogrulama best-effort
+        logger.warning("LLM startup validation skipped: %s", exc)
+    yield
+
+
 app = FastAPI(
     title="AI Job Agent API",
     description="Control and monitoring REST API for AI Job Agent",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 redis_bus = RedisEventBus()
@@ -65,6 +81,38 @@ class PipelineControlRequest(BaseModel):
     action: str
     confirmed: bool = False
     application_id: Optional[UUID] = None
+    # Faz 3B: fill/submit icin tek kullanimlik sunucu tokeni (UI onayina guvenilmez).
+    confirmation_token: Optional[str] = None
+
+
+class ConfirmationRequest(BaseModel):
+    action: str
+    application_id: Optional[UUID] = None
+
+
+@app.post("/api/v1/confirmations", dependencies=[ApiKey])
+def create_confirmation(request: ConfirmationRequest) -> dict[str, Any]:
+    """Browser aksiyonu icin tek kullanimlik onay tokeni uretir.
+
+    Dashboard, kullanicinin acik onayinin HEMEN ardindan bunu cagirir ve
+    tokeni aksiyon istegiyle birlikte gonderir. Token 5 dakika gecerlidir.
+    """
+    if request.action in {"submit", "submit_application"} and request.application_id is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="An application_id is required to confirm a submission.",
+        )
+    try:
+        token, ttl = confirmations.mint_confirmation_token(
+            request.action,
+            str(request.application_id) if request.application_id else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    return {"confirmation_token": token, "expires_in": ttl}
 
 
 @app.get("/health")
@@ -92,6 +140,8 @@ async def health() -> JSONResponse:
 
 @app.get("/api/v1/status", dependencies=[ApiKey])
 def status() -> dict[str, Any]:
+    from shared.llm.models import llm_status
+
     return {
         "service": "api",
         "version": "0.1.0",
@@ -100,6 +150,7 @@ def status() -> dict[str, Any]:
         "min_match_score": settings.MIN_MATCH_SCORE,
         "llm_provider": settings.LLM_PROVIDER,
         "llm_model": settings.LLM_MODEL,
+        "llm_status": llm_status(),
     }
 
 
@@ -118,6 +169,19 @@ async def run_pipeline_action(
         raise HTTPException(
             status_code=http_status.HTTP_409_CONFLICT,
             detail="Explicit confirmation is required before this browser action.",
+        )
+    # Faz 3B: UI onay bayragi yetmez; tek kullanimlik sunucu tokeni sart.
+    if request.action in CONFIRMATION_REQUIRED_ACTIONS and not confirmations.consume_confirmation_token(
+        request.confirmation_token,
+        request.action,
+        str(request.application_id) if request.application_id else None,
+    ):
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=(
+                "A single-use confirmation token is required before this browser action. "
+                "Mint one via POST /api/v1/confirmations right after the user confirms."
+            ),
         )
     if request.action == "submit_application" and request.application_id is None:
         raise HTTPException(
@@ -175,6 +239,8 @@ async def run_pipeline_action(
 
 class ApplicationExecuteRequest(BaseModel):
     action: str
+    # Faz 3B: submit icin tek kullanimlik sunucu tokeni (UI onayina guvenilmez).
+    confirmation_token: Optional[str] = None
 
 
 APPLICATION_EXECUTE_ACTIONS = {"prepare", "submit", "retry", "continue"}
@@ -249,6 +315,17 @@ async def execute_application_action(
             raise HTTPException(
                 status_code=http_status.HTTP_409_CONFLICT,
                 detail=f"Submit is only valid from READY_TO_SUBMIT (current: {status}).",
+            )
+        # Faz 3B: UI onayina guvenme; tek kullanimlik sunucu tokeni sart.
+        if not confirmations.consume_confirmation_token(
+            request.confirmation_token, "submit", str(application_id)
+        ):
+            raise HTTPException(
+                status_code=http_status.HTTP_409_CONFLICT,
+                detail=(
+                    "A single-use confirmation token is required before submission. "
+                    "Mint one via POST /api/v1/confirmations right after the user confirms."
+                ),
             )
         # The browser only submits in FULL_AUTO + AUTO_SUBMIT. Reject here
         # with an actionable message instead of silently filling the form,
@@ -347,6 +424,7 @@ async def execute_application_action(
 async def list_jobs(
     limit: int = Query(default=100, le=100),
     offset: int = 0,
+    q: Optional[str] = Query(default=None, description="Search company/title/URL"),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[dict[str, Any]]:
     document_count = (
@@ -379,6 +457,11 @@ async def list_jobs(
         .offset(offset)
         .limit(limit)
     )
+    if q:
+        like = f"%{q}%"
+        stmt = stmt.where(
+            (Job.company.ilike(like)) | (Job.title.ilike(like)) | (Job.url.ilike(like))
+        )
     res = await session.execute(stmt)
     rows = res.all()
     return [
@@ -1017,9 +1100,17 @@ async def backfill_document_application_links(
 @app.get("/api/v1/events", dependencies=[ApiKey])
 async def list_events(
     limit: int = Query(default=50, le=200),
+    q: Optional[str] = Query(default=None, description="Search event type/entity/correlation id"),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[dict[str, Any]]:
     stmt = select(PipelineEvent).order_by(desc(PipelineEvent.created_at)).limit(limit)
+    if q:
+        like = f"%{q}%"
+        stmt = stmt.where(
+            (PipelineEvent.event_type.ilike(like))
+            | (PipelineEvent.entity_id.ilike(like))
+            | (PipelineEvent.correlation_id.ilike(like))
+        )
     res = await session.execute(stmt)
     events = res.scalars().all()
     return [

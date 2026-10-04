@@ -1,6 +1,9 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator
 from typing import Optional
+import logging
+
+log = logging.getLogger("settings")
 
 
 WEAK_SECRETS = {"change_me", "minioadmin", ""}
@@ -39,7 +42,8 @@ class Settings(BaseSettings):
     ENV: str = "dev"  # dev | prod
 
     # Pipeline automation
-    MIN_MATCH_SCORE: float = 80.0
+    # GECICI varsayilan; golden-set ile kalibre edilecek (Faz 6).
+    MIN_MATCH_SCORE: int = 70
     AUTOMATION_MODE: str = "PREPARE_APPLICATION"
     AUTO_SUBMIT: bool = False
     MAX_APPLICATIONS_PER_DAY: int = 20
@@ -53,10 +57,21 @@ class Settings(BaseSettings):
 
     # LLM
     LLM_PROVIDER: str = "gemini"
-    LLM_MODEL: Optional[str] = None
+    # Bos birakilirsa model acilista dogrulanamaz; LLM aciklamasi kapali kalir,
+    # skor deterministik devam eder (bkz. shared.llm.models.resolve_model).
+    LLM_MODEL: str = ""
     GEMINI_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
+
+    # Discovery connector bayraklari (job-discovery acilista aktif olanlari loglar).
+    WORKABLE_ENABLED: bool = True
+    GREENHOUSE_ENABLED: bool = True
+    LEVER_ENABLED: bool = True
+    ASHBY_ENABLED: bool = True
+    SMARTRECRUITERS_ENABLED: bool = True
+    BUNDESAGENTUR_ENABLED: bool = True
+    ARBEITNOW_ENABLED: bool = True
 
     # Logging
     LOG_LEVEL: str = "INFO"
@@ -73,6 +88,11 @@ class Settings(BaseSettings):
             raise ValueError("FULL_AUTO requires explicit AUTO_SUBMIT=true")
         if not 0 <= self.MIN_MATCH_SCORE <= 100:
             raise ValueError("MIN_MATCH_SCORE must be 0-100")
+        if self.MIN_MATCH_SCORE >= 90:
+            log.warning(
+                "MIN_MATCH_SCORE=%s very high; QUALIFIED count may be ~0",
+                self.MIN_MATCH_SCORE,
+            )
         if self.MAX_APPLICATIONS_PER_HOUR > self.MAX_APPLICATIONS_PER_DAY:
             raise ValueError("hourly limit cannot exceed daily limit")
         if self.LOG_FORMAT not in {"text", "json"}:

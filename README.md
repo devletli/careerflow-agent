@@ -54,7 +54,7 @@ The current architecture is retained for now. For a single-user deployment, futu
 - [x] **Phase 5 — Form Analysis**: application form/question inspection and classification (legal/work-authorization, preference, open-ended).
 - [x] **Phase 6 — Generic Browser Automation**: Playwright-based `browser-agent` with accessible-locator-first form filling, CAPTCHA/login-wall/MFA detection with hard stop, file upload support, structured as a `BrowserAutomationEngine` core with per-site `SiteAdapter` classes (`workable`, `greenhouse`, `lever`, `generic` fallback). Submit lives only in the engine behind explicit confirmation (`FULL_AUTO` + `AUTO_SUBMIT`).
 - [x] **Phase 7 — Pipeline Automation & Rate Limiting**: event-driven orchestrator with bounded exponential backoff, dead-letter routing, duplicate/eligibility checks, and daily/hourly rate limits before any submission.
-- [x] **Phase 8 — Frontend Dashboard**: Next.js dashboard (Overview, Jobs, Applications, Events, Settings) served at `http://localhost:3000`, proxied to the API through Next.js rewrites.
+- [x] **Phase 8 — Frontend Dashboard**: Next.js dashboard (Overview, Jobs, Documents, Applications, Events, Settings) served at `http://localhost:3000`, proxied to the API through Next.js rewrites.
 - [x] **Phase 9 — Additional ATS Connectors (partial)**: Greenhouse/Lever/Ashby/SmartRecruiters discovery connectors exist; application-side (submission) adapters now cover Workable, Greenhouse, and Lever in `PREPARE` (fill-only) mode plus the `generic` fallback. Ashby/SmartRecruiters-specific submission flows remain open.
 - [x] **Phase 10 — Reliability Baseline**: matching evaluation dataset + automated eval, matching golden-set regression (`tests/golden/jobs.jsonl`), local browser regression fixtures (Playwright fill-without-submit, blocker hard-stop, Greenhouse/Lever adapters), GitHub Actions CI (backend tests, `mypy shared/`, frontend build, Compose validation, gitleaks), English dashboard UI with `tr` locale files (`services/frontend/i18n/`, `DASHBOARD_LOCALE`), CV grounding gate, prompt-injection/PII/API-key security tests, Redis Streams pending-recovery with DLQ routing, an API smoke/performance regression test, `scripts/backup.sh`/`restore.sh` with a restore-verification procedure, and JSON logging with correlation ids (`LOG_FORMAT=json`). Production-scale load testing remains open (see Roadmap).
 
@@ -70,14 +70,15 @@ Future (not started): Ashby/SmartRecruiters submission adapters, larger evaluati
 
 1. Copy `.env.example` to `.env`.
 2. Put your master CV at `profile/master_cv.pdf`.
-3. Edit `profile/profile.yaml` and `profile/preferences.yaml`.
+3. Edit `profile/profile.yaml` and `profile/preferences.yaml`
+   (templates: `profile/profile.example.yaml`, `profile/preferences.example.yaml`).
 4. Run:
 
 ```bash
 docker compose up --build
 ```
 
-5. API: `http://localhost:8000` (`/health`, `/api/v1/status`, `/api/v1/jobs`, `/api/v1/applications`, `/api/v1/documents`, `/api/v1/events`). Per-application actions go through `PATCH /api/v1/applications/{id}/execute` with an explicit `{"action": "prepare"|"submit"|"retry"|"continue"}` body: submit queues the browser only in `FULL_AUTO` + `AUTO_SUBMIT=true` (otherwise 409), retry is allowed only from `FAILED`, and an unverified click yields `REQUIRES_HUMAN` instead of an automatic retry. Documents stream privately via `/api/v1/documents/{id}/file` (never a raw MinIO URL).
+5. API: `http://localhost:8000` (`/health`, `/api/v1/status`, `/api/v1/jobs`, `/api/v1/applications`, `/api/v1/documents`, `/api/v1/events`). Per-application actions go through `PATCH /api/v1/applications/{id}/execute` with an explicit `{"action": "prepare"|"submit"|"retry"|"continue"}` body: submit queues the browser only in `FULL_AUTO` + `AUTO_SUBMIT=true` (otherwise 409), retry is allowed only from `FAILED`, and an unverified click yields `REQUIRES_HUMAN` instead of an automatic retry. Browser actions (`fill_applications` / `submit_application` pipeline actions and per-application `submit`) additionally require a single-use server-side confirmation token: mint via `POST /api/v1/confirmations` right after the user confirms in the dashboard (valid 5 minutes, bound to the action + application). Documents stream privately via `/api/v1/documents/{id}/file` (never a raw MinIO URL).
 6. Frontend dashboard: `http://localhost:3000` (Overview / Jobs / Documents / Applications / Events / Settings tabs, auto-refreshing every 10s). The Overview tab provides confirmed actions for discovery, matching, document generation, form analysis, and form filling. The Applications table shows exactly one action set per row based on backend status (`CREATED→Prepare`, `READY_TO_SUBMIT→Submit`, `RUNNING→View`, `REQUIRES_HUMAN→Continue`, `FAILED→Retry`, `SUBMITTED→Details`).
 7. MinIO Console: `http://127.0.0.1:9001` (credentials from `.env`: `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`)
 
@@ -180,6 +181,14 @@ GEMINI_API_KEY=your_api_key
 The application uses Google’s official `google-genai` SDK and asks Gemini for JSON-only structured responses. If no key is configured, matching retains its deterministic behavior and uses the existing safe fallback rather than inventing candidate information.
 
 The numeric match score and qualification are always deterministic and based only on verified profile facts. Gemini supplies a concise narrative/risk explanation only for `REVIEW` and `QUALIFIED` results; it cannot change the score or make an ineligible job eligible. This keeps the free-tier Gemini request rate within its limits and guarantees that matching continues when the provider is unavailable.
+
+Other providers (`openai`, `anthropic`, `ollama`) are supported through the same
+`LLMClient` abstraction (`shared/llm/client.py`): set `LLM_PROVIDER` plus the matching
+key (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`; Ollama needs no key). Only configure keys
+for providers you actually use. At startup the configured Gemini model is validated
+against the provider's model list; if it is missing/invalid, the API `/api/v1/status`
+reports `"llm_status": {"state": "disabled", "reason": ...}` (also shown on the
+dashboard) and matching continues deterministically.
 
 ## Remaining Risks / Known Limitations
 

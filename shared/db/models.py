@@ -161,6 +161,7 @@ class Document(Base):
 
     __table_args__ = (
         UniqueConstraint("job_id", "type", "language", "version", name="uq_documents_job_type_lang_ver"),
+        Index("ix_documents_job_type", "job_id", "type"),
     )
 
 
@@ -195,6 +196,7 @@ class Application(Base):
     )
 
     __table_args__ = (
+        Index("ix_applications_job_id", "job_id"),
         Index("ix_applications_status_updated", "status", "updated_at"),
     )
 
@@ -296,6 +298,9 @@ class PipelineEvent(Base):
     event_type: Mapped[str] = mapped_column(String(128), nullable=False)
     version: Mapped[str] = mapped_column(String(16), nullable=False, default="v1")
     correlation_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Faz 4A: architecture.md "her komutta idempotency_key" iddiasi.
+    # Varsayilan event_id'dir (retry yayininda korunur); unique indexlenir.
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(64), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)

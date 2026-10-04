@@ -12,6 +12,7 @@ from shared.contracts.models import PipelineStatus
 from shared.db.models import Job, JobMatch
 from shared.db.session import get_session, check_db_health
 from shared.infra.redis_bus import RedisEventBus
+from shared.infra.jsonlog import correlation
 from shared.profile.loader import load_canonical_profile
 from app.matcher import JobMatchingEngine
 
@@ -160,6 +161,11 @@ class JobMatchingWorker:
 
         await self.bus.ensure_consumer_group(settings.STREAM_EVENTS, CONSUMER_GROUP)
 
+        # Faz 1C: LLM modelini acilista dogrula; gecersizse deterministik devam.
+        from shared.llm.models import validate_llm_at_startup
+
+        await validate_llm_at_startup()
+
         # Initial sweep of existing unmatched jobs
         await self.match_all_unmatched()
         if once:
@@ -181,19 +187,21 @@ class JobMatchingWorker:
                     block_ms=2000,
                 )
                 for msg_id, event in events:
-                    if (
-                        event.event_type == "pipeline.control.v1"
-                        and event.payload.get("action") == "match"
-                    ):
-                        logger.info("Received manual matching request correlation_id=%s", event.correlation_id)
-                        await self.match_all_unmatched(include_matched=True)
-                    elif event.event_type in ("job.normalized.v1", "job.discovered.v1"):
-                        try:
-                            job_id = UUID(event.entity_id)
-                            await self.match_job(job_id)
-                        except Exception as e:
-                            logger.error(f"Error matching job {event.entity_id}: {e}", exc_info=True)
-                    await self.bus.ack(settings.STREAM_EVENTS, CONSUMER_GROUP, msg_id)
+                    # Faz 4A: JSON loglara correlation_id islenir.
+                    with correlation(event.correlation_id, event.entity_id):
+                        if (
+                            event.event_type == "pipeline.control.v1"
+                            and event.payload.get("action") == "match"
+                        ):
+                            logger.info("Received manual matching request correlation_id=%s", event.correlation_id)
+                            await self.match_all_unmatched(include_matched=True)
+                        elif event.event_type in ("job.normalized.v1", "job.discovered.v1"):
+                            try:
+                                job_id = UUID(event.entity_id)
+                                await self.match_job(job_id)
+                            except Exception as e:
+                                logger.error(f"Error matching job {event.entity_id}: {e}", exc_info=True)
+                        await self.bus.ack(settings.STREAM_EVENTS, CONSUMER_GROUP, msg_id)
 
             except asyncio.CancelledError:
                 break

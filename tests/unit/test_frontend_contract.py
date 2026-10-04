@@ -70,7 +70,8 @@ def test_action_cells_keep_buttons_visible():
 def test_theme_toggle_and_persistence():
     src = PAGE.read_text(encoding="utf-8")
     assert "useTheme" in src and "ai-job-agent-theme" in src
-    assert 'aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}' in src
+    # Toggle labels come from i18n (Faz 2D), not hardcoded literals.
+    assert "STRINGS.themeLight" in src and "STRINGS.themeDark" in src
     assert "localStorage.setItem" in src
     assert "<ThemeToggle" in src
     layout = (ROOT / "services" / "frontend" / "app" / "layout.js").read_text(encoding="utf-8")
@@ -94,7 +95,10 @@ def test_tables_show_loading_state():
         assert re.search(rf"function {component}\(\{{[^)]*loading", src, re.IGNORECASE), (
             f"{component} must accept a loading prop"
         )
-    assert src.count("Loading…") >= 4, "tables should render a Loading… state while fetching"
+    assert src.count("STRINGS.loading") >= 4, "tables should render a Loading… state while fetching"
+    i18n_en = (ROOT / "services" / "frontend" / "i18n" / "en.json").read_text(encoding="utf-8")
+    i18n_tr = (ROOT / "services" / "frontend" / "i18n" / "tr.json").read_text(encoding="utf-8")
+    assert '"loading"' in i18n_en and '"loading"' in i18n_tr
 
 
 def test_frontend_api_paths_exist_in_backend():
@@ -153,7 +157,7 @@ def test_polling_discipline_and_filter_persistence():
     # Search/filter state survives tab switches via localStorage.
     assert "usePersistentState" in src
     assert "ai-job-agent-filter:" in src
-    for key in ("jobs.query", "applications.query", "documents.query"):
+    for key in ("jobs.query", "applications.query", "documents.query", "events.query"):
         assert f'"{key}"' in src, f"missing persistent filter key {key}"
 
 

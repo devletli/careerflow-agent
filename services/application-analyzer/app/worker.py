@@ -22,6 +22,7 @@ from shared.db.models import (
 )
 from shared.db.session import get_session, check_db_health
 from shared.infra.redis_bus import RedisEventBus
+from shared.infra.jsonlog import correlation
 from shared.profile.loader import load_canonical_profile
 from app.analyzer import FormAnalyzer
 
@@ -209,19 +210,21 @@ class ApplicationAnalyzerWorker:
                     block_ms=2000,
                 )
                 for msg_id, event in events:
-                    if (
-                        event.event_type == "pipeline.control.v1"
-                        and event.payload.get("action") == "analyze_applications"
-                    ):
-                        logger.info("Received manual application analysis request correlation_id=%s", event.correlation_id)
-                        await self.analyze_all_pending()
-                    elif event.event_type == "documents.generated.v1":
-                        try:
-                            job_id = UUID(event.entity_id)
-                            await self.analyze_job_application(job_id)
-                        except Exception as e:
-                            logger.error(f"Error analyzing application for {event.entity_id}: {e}", exc_info=True)
-                    await self.bus.ack(settings.STREAM_EVENTS, CONSUMER_GROUP, msg_id)
+                    # Faz 4A: JSON loglara correlation_id islenir.
+                    with correlation(event.correlation_id, event.entity_id):
+                        if (
+                            event.event_type == "pipeline.control.v1"
+                            and event.payload.get("action") == "analyze_applications"
+                        ):
+                            logger.info("Received manual application analysis request correlation_id=%s", event.correlation_id)
+                            await self.analyze_all_pending()
+                        elif event.event_type == "documents.generated.v1":
+                            try:
+                                job_id = UUID(event.entity_id)
+                                await self.analyze_job_application(job_id)
+                            except Exception as e:
+                                logger.error(f"Error analyzing application for {event.entity_id}: {e}", exc_info=True)
+                        await self.bus.ack(settings.STREAM_EVENTS, CONSUMER_GROUP, msg_id)
 
             except asyncio.CancelledError:
                 break

@@ -30,10 +30,24 @@ def application_id_from_uri(uri: str) -> str:
     return application_id
 
 
+def _api_key_from_env() -> str:
+    """API anahtarini proje .env dosyasindan okur (dashboard disindan erisim)."""
+    env_path = PROJECT_ROOT / ".env"
+    try:
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("API_KEY="):
+                return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return ""
+
+
 def request_context(application_id: str) -> dict:
     url = f"{API_BASE_URL}/api/v1/applications/{application_id}/desktop-context"
+    request = urllib.request.Request(url, headers={"X-API-Key": _api_key_from_env()})
     try:
-        with urllib.request.urlopen(url, timeout=15) as response:
+        with urllib.request.urlopen(request, timeout=15) as response:
             return json.load(response)
     except Exception as exc:
         raise RuntimeError(

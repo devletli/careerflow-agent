@@ -107,7 +107,7 @@ export default function ApplicationDetail() {
     }
   };
 
-  if (loading) return <main className="app-shell"><p className="muted">Loading…</p></main>;
+  if (loading) return <main className="app-shell"><p className="muted">{STRINGS.loading}</p></main>;
   if (error || !data) {
     return (
       <main className="app-shell">

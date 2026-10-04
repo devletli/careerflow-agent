@@ -15,7 +15,7 @@ BASE_URL = "http://localhost:3000"
 
 VIEWPORTS = {
     "desktop": {"width": 1280, "height": 900},
-    "tablet": {"width": 768, "height": 1024},
+    "tablet": {"width": 1024, "height": 768},
     "mobile": {"width": 390, "height": 844},
 }
 
@@ -59,6 +59,11 @@ def test_tabs_come_from_single_array_and_switch(viewport):
             page.wait_for_timeout(2500)
             labels = page.locator(".tabs .tab").all_inner_texts()
             assert [t.strip() for t in labels] == TABS
+            # Faz 2A: all 6 tabs visible at desktop/tablet/mobile widths.
+            for tab in TABS:
+                assert page.get_by_role(
+                    "tab", name=tab, exact=True
+                ).is_visible(), f"tab not visible: {tab} @ {viewport}"
             for tab in ("Jobs", "Applications", "Documents"):
                 page.get_by_role("button", name=tab, exact=True).click()
                 page.wait_for_timeout(1500)

@@ -11,6 +11,7 @@ from shared.contracts.models import PipelineStatus
 from shared.db.models import Job
 from shared.db.session import get_session, check_db_health
 from shared.infra.redis_bus import RedisEventBus
+from shared.infra.jsonlog import correlation
 from shared.profile.loader import load_canonical_profile
 from browser.site_adapters.discovery import (
     WorkableAdapter,
@@ -48,7 +49,7 @@ class JobDiscoveryWorker:
     def __init__(self):
         self.bus = RedisEventBus()
         self.profile = load_canonical_profile()
-        self.adapters = [
+        candidates = [
             BundesagenturAdapter(),
             ArbeitnowAdapter(),
             WorkableAdapter(),
@@ -57,6 +58,18 @@ class JobDiscoveryWorker:
             AshbyAdapter(),
             SmartRecruitersAdapter(),
         ]
+        self.adapters = []
+        for adapter in candidates:
+            flag = f"{adapter.source_name.upper()}_ENABLED"
+            enabled = getattr(settings, flag, True)
+            if enabled:
+                self.adapters.append(adapter)
+            else:
+                logger.info("Discovery adapter disabled by %s: %s", flag, adapter.source_name)
+        logger.info(
+            "Active discovery adapters: %s",
+            [a.source_name for a in self.adapters],
+        )
         self.running = False
 
     async def run_discovery_cycle(self) -> int:
@@ -186,13 +199,15 @@ class JobDiscoveryWorker:
                 block_ms=wait_ms,
             )
             for message_id, event in events:
-                if (
-                    event.event_type == "pipeline.control.v1"
-                    and event.payload.get("action") == "discover"
-                ):
-                    logger.info("Received manual discovery request correlation_id=%s", event.correlation_id)
-                    await self.run_discovery_cycle()
-                await self.bus.ack(settings.STREAM_EVENTS, CONTROL_GROUP, message_id)
+                # Faz 4A: JSON loglara correlation_id islenir.
+                with correlation(event.correlation_id, event.entity_id):
+                    if (
+                        event.event_type == "pipeline.control.v1"
+                        and event.payload.get("action") == "discover"
+                    ):
+                        logger.info("Received manual discovery request correlation_id=%s", event.correlation_id)
+                        await self.run_discovery_cycle()
+                    await self.bus.ack(settings.STREAM_EVENTS, CONTROL_GROUP, message_id)
             if time.monotonic() >= next_scheduled_run:
                 await self.run_discovery_cycle()
                 next_scheduled_run = time.monotonic() + interval_seconds

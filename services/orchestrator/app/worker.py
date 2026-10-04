@@ -103,10 +103,13 @@ class OrchestratorWorker:
         retry_count = int(event.payload.get("_retry_count", 0))
 
         try:
-            # Check idempotency: if event_id already recorded in pipeline_events, skip
+            # Check idempotency: Faz 4A; event_id degil idempotency_key kanonik
+            # (retry yayininda korunur, ayni mantiksal komut = ayni anahtar).
             async with get_session() as session:
                 existing_ev = await session.execute(
-                    select(PipelineEvent).where(PipelineEvent.event_id == UUID(event.event_id))
+                    select(PipelineEvent).where(
+                        PipelineEvent.idempotency_key == (event.idempotency_key or event.event_id)
+                    )
                 )
                 if existing_ev.scalars().first() is not None:
                     logger.debug(f"Event {event.event_id} already processed (idempotent skip)")
@@ -123,6 +126,7 @@ class OrchestratorWorker:
                     event_type=event.event_type,
                     version=event.version,
                     correlation_id=event.correlation_id,
+                    idempotency_key=event.idempotency_key or event.event_id,
                     entity_id=event.entity_id,
                     entity_type="event",
                     payload=event.payload,

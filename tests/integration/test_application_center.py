@@ -123,7 +123,8 @@ async def seed():
         s.add(
             PipelineEvent(
                 id=uuid4(), event_id=uuid4(), event_type="job.qualified.v1",
-                version="v1", correlation_id="corr-1", entity_id=str(app1.id),
+                version="v1", correlation_id="corr-1", idempotency_key=f"idem-{uuid4().hex}",
+                entity_id=str(app1.id),
                 entity_type="application", payload={},
             )
         )

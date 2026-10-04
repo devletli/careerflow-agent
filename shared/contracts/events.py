@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 import json
-from typing import Any, Dict, Type
+from typing import Any, Dict, Optional, Type
 from uuid import uuid4
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class BaseEvent(BaseModel):
@@ -16,7 +16,16 @@ class BaseEvent(BaseModel):
     )
     correlation_id: str
     entity_id: str
+    # Faz 4A: ayni mantiksal komutun tekrar yayinlari ayni anahtari tasir;
+    # bos birakilirsa event_id kullanilir (retry yayininda korunur).
+    idempotency_key: Optional[str] = None
     payload: Dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _default_idempotency_key(self) -> "BaseEvent":
+        if not self.idempotency_key:
+            self.idempotency_key = self.event_id
+        return self
 
     def to_json(self) -> str:
         return self.model_dump_json()

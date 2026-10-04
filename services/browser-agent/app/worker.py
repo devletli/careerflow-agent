@@ -11,6 +11,7 @@ from shared.contracts.models import PipelineStatus
 from shared.db.models import Application
 from shared.db.session import check_db_health, get_session
 from shared.infra.redis_bus import RedisEventBus
+from shared.infra.jsonlog import correlation
 from shared.profile.loader import load_canonical_profile
 
 from app.engine import BrowserAutomationEngine
@@ -83,35 +84,37 @@ class BrowserAgentWorker:
                     block_ms=5000,
                 )
                 for msg_id, event in events:
-                    if (
-                        event.event_type == "pipeline.control.v1"
-                        and event.payload.get("action") == "fill_applications"
-                        and event.payload.get("confirmed") is True
-                    ):
-                        logger.info("Received confirmed manual form filling request correlation_id=%s", event.correlation_id)
-                        await self.process_ready_applications()
-                    elif (
-                        event.event_type == "pipeline.control.v1"
-                        and event.payload.get("action") == "submit_application"
-                        and event.payload.get("confirmed") is True
-                    ):
-                        application_id = event.payload.get("application_id")
-                        try:
-                            await self.engine.run_application(
-                                UUID(application_id), submit=True, confirmed=True
-                            )
-                        except (TypeError, ValueError):
-                            logger.error(
-                                "Rejected submit request with invalid application_id=%r",
-                                application_id,
-                            )
-                    elif event.event_type == "application.ready.v1":
-                        try:
-                            app_id = UUID(event.entity_id)
-                            await self.engine.run_application(app_id)
-                        except Exception as e:
-                            logger.error(f"Error processing application {event.entity_id}: {e}", exc_info=True)
-                    await self.bus.ack(settings.STREAM_EVENTS, CONSUMER_GROUP, msg_id)
+                    # Faz 4A: JSON loglara correlation_id islenir.
+                    with correlation(event.correlation_id, event.entity_id):
+                        if (
+                            event.event_type == "pipeline.control.v1"
+                            and event.payload.get("action") == "fill_applications"
+                            and event.payload.get("confirmed") is True
+                        ):
+                            logger.info("Received confirmed manual form filling request correlation_id=%s", event.correlation_id)
+                            await self.process_ready_applications()
+                        elif (
+                            event.event_type == "pipeline.control.v1"
+                            and event.payload.get("action") == "submit_application"
+                            and event.payload.get("confirmed") is True
+                        ):
+                            application_id = event.payload.get("application_id")
+                            try:
+                                await self.engine.run_application(
+                                    UUID(application_id), submit=True, confirmed=True
+                                )
+                            except (TypeError, ValueError):
+                                logger.error(
+                                    "Rejected submit request with invalid application_id=%r",
+                                    application_id,
+                                )
+                        elif event.event_type == "application.ready.v1":
+                            try:
+                                app_id = UUID(event.entity_id)
+                                await self.engine.run_application(app_id)
+                            except Exception as e:
+                                logger.error(f"Error processing application {event.entity_id}: {e}", exc_info=True)
+                        await self.bus.ack(settings.STREAM_EVENTS, CONSUMER_GROUP, msg_id)
 
             except asyncio.CancelledError:
                 break

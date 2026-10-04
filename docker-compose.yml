@@ -1,3 +1,5 @@
+x-db-url: &db_url postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB}
+
 services:
 
   postgres:
@@ -51,6 +53,8 @@ services:
       context: .
       dockerfile: services/orchestrator/Dockerfile
     env_file: .env
+    environment:
+      DATABASE_URL: *db_url
     depends_on:
       postgres:
         condition: service_healthy
@@ -62,8 +66,11 @@ services:
       context: .
       dockerfile: services/api/Dockerfile
     restart: unless-stopped
+    stop_grace_period: 30s
     mem_limit: 512m
     env_file: .env
+    environment:
+      DATABASE_URL: *db_url
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,8 +95,11 @@ services:
       context: .
       dockerfile: services/orchestrator/Dockerfile
     restart: unless-stopped
+    stop_grace_period: 30s
     mem_limit: 512m
     env_file: .env
+    environment:
+      DATABASE_URL: *db_url
     depends_on:
       postgres:
         condition: service_healthy
@@ -103,8 +113,11 @@ services:
       context: .
       dockerfile: services/job-discovery/Dockerfile
     restart: unless-stopped
+    stop_grace_period: 30s
     mem_limit: 512m
     env_file: .env
+    environment:
+      DATABASE_URL: *db_url
     depends_on:
       postgres:
         condition: service_healthy
@@ -118,8 +131,11 @@ services:
       context: .
       dockerfile: services/job-matching/Dockerfile
     restart: unless-stopped
+    stop_grace_period: 30s
     mem_limit: 512m
     env_file: .env
+    environment:
+      DATABASE_URL: *db_url
     depends_on:
       postgres:
         condition: service_healthy
@@ -133,8 +149,11 @@ services:
       context: .
       dockerfile: services/cv-generator/Dockerfile
     restart: unless-stopped
+    stop_grace_period: 30s
     mem_limit: 512m
     env_file: .env
+    environment:
+      DATABASE_URL: *db_url
     depends_on:
       postgres:
         condition: service_healthy
@@ -153,8 +172,11 @@ services:
       context: .
       dockerfile: services/application-analyzer/Dockerfile
     restart: unless-stopped
+    stop_grace_period: 30s
     mem_limit: 512m
     env_file: .env
+    environment:
+      DATABASE_URL: *db_url
     depends_on:
       postgres:
         condition: service_healthy
@@ -168,8 +190,11 @@ services:
       context: .
       dockerfile: services/browser-agent/Dockerfile
     restart: unless-stopped
+    stop_grace_period: 30s
     mem_limit: 2g
     env_file: .env
+    environment:
+      DATABASE_URL: *db_url
     depends_on:
       postgres:
         condition: service_healthy

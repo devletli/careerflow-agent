@@ -11,6 +11,7 @@ from shared.contracts.models import PipelineStatus
 from shared.db.models import Application, Job, JobMatch, Document
 from shared.db.session import get_session, check_db_health
 from shared.infra.redis_bus import RedisEventBus
+from shared.infra.jsonlog import correlation
 from shared.profile.loader import load_canonical_profile
 from app.generator import DocumentGenerator
 
@@ -184,19 +185,21 @@ class CVGeneratorWorker:
                     block_ms=2000,
                 )
                 for msg_id, event in events:
-                    if (
-                        event.event_type == "pipeline.control.v1"
-                        and event.payload.get("action") == "generate_documents"
-                    ):
-                        logger.info("Received manual document generation request correlation_id=%s", event.correlation_id)
-                        await self.generate_all_pending()
-                    elif event.event_type == "job.qualified.v1":
-                        try:
-                            job_id = UUID(event.entity_id)
-                            await self.generate_for_job(job_id)
-                        except Exception as e:
-                            logger.error(f"Error generating documents for {event.entity_id}: {e}", exc_info=True)
-                    await self.bus.ack(settings.STREAM_EVENTS, CONSUMER_GROUP, msg_id)
+                    # Faz 4A: JSON loglara correlation_id islenir.
+                    with correlation(event.correlation_id, event.entity_id):
+                        if (
+                            event.event_type == "pipeline.control.v1"
+                            and event.payload.get("action") == "generate_documents"
+                        ):
+                            logger.info("Received manual document generation request correlation_id=%s", event.correlation_id)
+                            await self.generate_all_pending()
+                        elif event.event_type == "job.qualified.v1":
+                            try:
+                                job_id = UUID(event.entity_id)
+                                await self.generate_for_job(job_id)
+                            except Exception as e:
+                                logger.error(f"Error generating documents for {event.entity_id}: {e}", exc_info=True)
+                        await self.bus.ack(settings.STREAM_EVENTS, CONSUMER_GROUP, msg_id)
 
             except asyncio.CancelledError:
                 break

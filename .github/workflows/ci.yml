@@ -34,7 +34,15 @@ jobs:
         run: python -m pytest -m "not live" -q
 
       - name: Validate Docker Compose configuration
-        run: cp .env.example .env && docker compose config --quiet
+        # .env.example bilerek bos sir icerir; :?set korumalarini dogrulamak icin
+        # shell ortamindan dummy degerler verilir (.env dosyasindaki bos degerleri ezer).
+        run: |
+          cp .env.example .env
+          POSTGRES_PASSWORD=ci_dummy_password \
+          MINIO_ACCESS_KEY=ci_dummy_user \
+          MINIO_SECRET_KEY=ci_dummy_secret_12345678 \
+          API_KEY=ci_dummy_api_key_1234567890 \
+          docker compose config --quiet
 
   frontend:
     runs-on: ubuntu-latest

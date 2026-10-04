@@ -39,7 +39,12 @@ def test_page_uses_strings_module_not_hardcoded_tabs():
     assert "const ACTIONS = STRINGS.actions" in src
     assert '"Overview", "Jobs"' not in src
     for literal in ("Open in Browser", "Fill with Playwright", "Submit with Playwright",
-                    "Playwright ile Gönder", "Tarayıcıda Aç"):
+                    "Playwright ile Gönder", "Tarayıcıda Aç",
+                    "Pipeline Controls", "Recent Jobs", "Runtime Settings",
+                    "Discovered / matched jobs", "Application history",
+                    "Generated CVs and cover letters", "Continue manually",
+                    "No jobs discovered yet.", "No applications yet.",
+                    "No documents generated yet.", "Switch to light mode"):
         assert literal not in src, f"hardcoded dashboard text: {literal}"
 
 
