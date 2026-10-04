@@ -273,23 +273,6 @@ class AutomationRun(Base):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
 
 
-class SiteAdapter(Base):
-    __tablename__ = "site_adapters"
-
-    id: Mapped[PyUUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    domain_pattern: Mapped[str] = mapped_column(String(255), nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    adapter_class: Mapped[str] = mapped_column(String(255), nullable=False)
-    capabilities: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
-    rate_limit_hourly: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
-    rate_limit_daily: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
-    )
-
-
 class PipelineEvent(Base):
     __tablename__ = "pipeline_events"
 

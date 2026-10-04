@@ -11,9 +11,10 @@ applications
 application_questions
 application_answers
 automation_runs
-site_adapters
 pipeline_events
 dead_letter_events
+
+(`site_adapters` tablosu kaldirildi, bkz. db/README.md.)
 
 Important unique constraints:
 

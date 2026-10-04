@@ -242,8 +242,19 @@ class BrowserAutomationEngine:
             logger.debug(f"Confirmation detection error: {e}")
         return None
 
-    async def _find_submit_button(self, page: Any) -> Optional[Any]:
-        for selector in SUBMIT_SELECTORS:
+    async def _find_submit_button(self, page: Any, adapter: Any = None) -> Optional[Any]:
+        # Faz 5A: adapter siteye ozel locator verebilir; tiklama yine Engine'de.
+        custom = None
+        if adapter is not None:
+            locator_fn = getattr(adapter, "submit_locator", None)
+            if callable(locator_fn):
+                try:
+                    custom = locator_fn(page)
+                except Exception as exc:
+                    logger.debug(f"Adapter submit locator failed, using defaults: {exc}")
+                    custom = None
+        selectors = ([custom] if custom else []) + SUBMIT_SELECTORS
+        for selector in selectors:
             try:
                 button = await page.query_selector(selector)
                 if button and await button.is_visible() and await button.is_enabled():
@@ -285,7 +296,7 @@ class BrowserAutomationEngine:
 
     async def _click_submit(self, page: Any, adapter: Any = None) -> Dict[str, Any]:
         try:
-            button = await self._find_submit_button(page)
+            button = await self._find_submit_button(page, adapter=adapter)
         except Exception as exc:
             logger.error(f"Submit button lookup failed: {exc}")
             return {"clicked": False, "confirmed": False, "error": str(exc)}

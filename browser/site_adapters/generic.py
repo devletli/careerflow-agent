@@ -70,6 +70,14 @@ class GenericAdapter:
             return "LOGIN"
         return None
 
+    async def discover_application(self, page: Page) -> str | None:
+        """Generic kural: site-ici kesif yok; Engine cagrisi aynen gecer."""
+        return None
+
+    def submit_locator(self, page: Page) -> str | None:
+        """Siteye ozel secici yok; Engine varsayilan SUBMIT_SELECTORS kullanilir."""
+        return None
+
     def _match_key(self, plan: list[FieldPlan], key: str) -> FieldPlan | None:
         for field in plan:
             if field.key.lower() in key or key in field.key.lower():

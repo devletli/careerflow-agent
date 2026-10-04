@@ -10,9 +10,11 @@ applications
 application_questions
 application_answers
 automation_runs
-site_adapters
 pipeline_events
 dead_letter_events
+
+(`site_adapters` tablosu Faz 5B'de kaldirildi: hicbir kod okumuyor/yazmiyordu;
+adapter cozumu kod-ici registry'dedir: browser/site_adapters/registry.py.)
 
 Add indexes for:
 jobs(source, source_job_id)

@@ -5,7 +5,7 @@ Pins the pre-refactor behavior against the new structure
 - verified answers fill, unverified answers land in skipped_unverified;
 - CAPTCHA/login blockers stop automation without bypass;
 - submit fires ONLY with submit=True + confirmed=True + FULL_AUTO mode;
-- worker.py stays orchestration-only (< 150 lines).
+- worker.py stays orchestration-only (< 160 lines).
 """
 import asyncio
 import concurrent.futures
@@ -193,8 +193,67 @@ def test_build_plan_uses_verified_answers_only():
     assert plan["email"].value == "ada@example.com"
     assert plan["salary_expectation"].value is None
 
-
 def test_worker_is_orchestration_only():
     lines = (ROOT / "services" / "browser-agent" / "app" / "worker.py").read_text(encoding="utf-8").splitlines()
     # Faz 4A correlation() sarmasi dahil; limit kucuk tutulur ki worker sismesin.
     assert len(lines) < 160, f"worker.py must stay orchestration-only, has {len(lines)} lines"
+
+
+def _fake_button():
+    button = AsyncMock()
+    button.is_visible.return_value = True
+    button.is_enabled.return_value = True
+    return button
+
+
+def test_adapter_submit_locator_override_wins():
+    """Faz 5A: adapter locator verirse Engine onu dener; tiklama yine Engine'de."""
+    from browser.site_adapters.base import SiteAdapter
+    from browser.site_adapters.generic import GenericAdapter
+
+    assert isinstance(GenericAdapter(), SiteAdapter)
+
+    class CustomAdapter(GenericAdapter):
+        name = "custom-locator"
+
+        def submit_locator(self, page):
+            return "button#site-submit"
+
+    async def scenario():
+        engine = BrowserAutomationEngine()
+        seen = []
+
+        async def query_selector(selector):
+            seen.append(selector)
+            return _fake_button() if selector == "button#site-submit" else None
+
+        page = AsyncMock()
+        page.query_selector.side_effect = query_selector
+        button = await engine._find_submit_button(page, adapter=CustomAdapter())
+        assert button is not None
+        assert seen[0] == "button#site-submit"
+
+    _run(scenario())
+
+
+def test_adapter_submit_locator_default_none_falls_back():
+    from browser.site_adapters.generic import GenericAdapter
+
+    async def scenario():
+        engine = BrowserAutomationEngine()
+        adapter = GenericAdapter()
+        assert adapter.submit_locator(None) is None
+        assert await adapter.discover_application(None) is None
+
+        seen = []
+
+        async def query_selector(selector):
+            seen.append(selector)
+            return None
+
+        page = AsyncMock()
+        page.query_selector.side_effect = query_selector
+        assert await engine._find_submit_button(page, adapter=adapter) is None
+        assert seen == _engine.SUBMIT_SELECTORS
+
+    _run(scenario())

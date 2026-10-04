@@ -9,7 +9,6 @@ from shared.db.models import (
     ApplicationQuestion,
     ApplicationAnswer,
     AutomationRun,
-    SiteAdapter,
     PipelineEvent,
     DeadLetterEvent,
 )
@@ -32,7 +31,6 @@ __all__ = [
     "ApplicationQuestion",
     "ApplicationAnswer",
     "AutomationRun",
-    "SiteAdapter",
     "PipelineEvent",
     "DeadLetterEvent",
     "async_engine",
