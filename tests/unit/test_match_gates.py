@@ -22,3 +22,16 @@ def test_gate_never_rejects_only_downgrades():
 
 def test_satisfied_gate_is_ignored():
     assert evaluate_gates("Fließend Deutsch", "Dev", {"german_c1": True}) == []
+
+
+def test_senior_in_body_does_not_trigger():
+    assert evaluate_gates("Du arbeitest mit Senior Engineers zusammen", "Backend Developer", {}) == []
+
+
+def test_senior_in_title_triggers():
+    assert evaluate_gates("Python", "Senior Backend Developer", {}) == ["senior_title"]
+
+
+def test_clearance_word_boundary():
+    assert evaluate_gates("Heute Menü2 in der Kantine", "Dev", {}) == []
+    assert evaluate_gates("Sicherheitsüberprüfung erforderlich", "Dev", {}) == ["security_clearance"]

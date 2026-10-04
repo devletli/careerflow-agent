@@ -25,6 +25,7 @@ from shared.db.models import (
     ApplicationAnswer,
     ApplicationQuestion,
     AutomationRun,
+    Job,
 )
 from shared.db.session import get_session
 from shared.profile.loader import CanonicalProfile
