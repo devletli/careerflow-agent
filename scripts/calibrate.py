@@ -45,7 +45,13 @@ def main(path="tests/golden/real_labeled.jsonl"):
             "(sema: tests/golden/real_labeled.example.jsonl)"
         )
         return 2
-    rows = load(path)
+    rows = [r for r in load(path) if r.get("label") in ("QUALIFIED", "REVIEW", "NOT_QUALIFIED")]
+    if len(rows) < 10:
+        print(  # noqa: T201 - CLI
+            f"etiketli satir yetersiz ({len(rows)}): once real_labeled.jsonl icindeki "
+            '"label" alanlarini doldurun (en az 10)'
+        )
+        return 2
     try:
         profile = load_canonical_profile()
     except Exception as exc:

@@ -19,6 +19,9 @@ smoke:
 calibrate:
 	python scripts/calibrate.py
 
+collect-calibration:
+	python scripts/collect_calibration_ads.py
+
 lint:
 	python -m ruff check .
 	python -m mypy shared/ services/api/app/
