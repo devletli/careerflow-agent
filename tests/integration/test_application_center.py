@@ -239,29 +239,6 @@ def test_notes_roundtrip(client, seed):
     assert client.get(f"/api/v1/applications/{seed['app1']}").json()["notes"] == "Call on Monday"
 
 
-def test_backfill_document_application_links(client, seed):
-    # Before backfill: orphan has application_id=None
-    body = client.get("/api/v1/documents").json()
-    assert any(d["application"] is None for d in body)
-
-    # Run backfill
-    r = client.patch("/api/v1/documents/backfill")
-    assert r.status_code == 200
-    data = r.json()
-    assert data["linked"] >= 0
-
-    # After backfill: orphan should be linked to app1 (only app for job1)
-    body = client.get("/api/v1/documents").json()
-    by_id = {d["id"]: d for d in body}
-    orphan = by_id[str(seed["orphan"])]
-    # Since only app1 exists for job1, orphan should now be linked
-    assert orphan["application"] == {"id": str(seed["app1"]), "status": "READY_TO_APPLY"}
-    # cv1 and cv2 were already linked, other has no app for job2
-    assert by_id[str(seed["cv1"])]["application"]["id"] == str(seed["app1"])
-    assert by_id[str(seed["cv2"])]["application"]["id"] == str(seed["app1"])
-    assert by_id[str(seed["other"])]["application"] is None  # job2 has no application
-
-
 def test_documents_list_with_application_id_filter(client, seed):
     # Test filtering by application_id
     body = client.get("/api/v1/documents", params={"application_id": str(seed["app1"])}).json()

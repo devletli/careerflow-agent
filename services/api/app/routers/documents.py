@@ -146,39 +146,3 @@ async def download_document(
         media_type=document.mime_type,
         headers={"Content-Disposition": f'attachment; filename="{_document_filename(document)}"'},
     )
-
-
-@router.patch("/backfill")
-async def backfill_document_application_links(
-    session: AsyncSession = Depends(get_db_session),
-) -> dict[str, Any]:
-    """Backfill application_id for documents by matching via job_id.
-
-    For each document with application_id=NULL, find applications sharing
-    the same job_id and link them. If a job has multiple applications,
-    the document stays unlinked to avoid ambiguity.
-    """
-    from sqlalchemy import select
-
-    # Find all documents without an application link.
-    doc_stmt = select(Document).where(Document.application_id.is_(None))
-    doc_res = await session.execute(doc_stmt)
-    documents = doc_res.scalars().all()
-
-    # Group applications by job_id.
-    app_stmt = select(Application.job_id, Application.id).distinct(Application.job_id)
-    app_res = await session.execute(app_stmt)
-    apps_by_job: dict[Any, list[Any]] = {}
-    for job_id, app_id in app_res.all():
-        apps_by_job.setdefault(job_id, []).append(app_id)
-
-    linked = 0
-    for doc in documents:
-        matching_apps = apps_by_job.get(doc.job_id, [])
-        if len(matching_apps) == 1:
-            doc.application_id = matching_apps[0]
-            linked += 1
-        # If 0 or >1 matching applications, leave document unlinked.
-
-    await session.commit()
-    return {"linked": linked, "total_documents_without_app": len(documents)}

@@ -65,6 +65,17 @@ mc mirror --overwrite ./backups/minio-job-agent-private local/job-agent-private
 Volume-level alternative: stop the stack and back up the named volumes
 (`postgres_data`, `minio_data`, `redis_data`) with your host backup tool.
 
+## Document-application backfill
+
+One-shot data fix (replaces the removed `PATCH /api/v1/documents/backfill`
+route). Links unlinked documents via `job_id` only where exactly one
+application exists for the job; ambiguous rows are reported and skipped:
+
+```bash
+python scripts/backfill_document_application_link.py --dry-run
+python scripts/backfill_document_application_link.py
+```
+
 ## API key rotation
 
 1. Generate a new key (32+ random characters).
