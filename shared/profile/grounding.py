@@ -117,7 +117,13 @@ def validate_grounding(
     text_low = text.lower()
 
     # --- metrics: numbers must come from the profile (years not letterhead) ---
-    for number in extract_numbers(text) - _profile_numbers(profile):
+    # Deneyim maddelerindeki sayilar (or. "%60", "60 %") dogrulanmis fact sayilir:
+    # grounding, experience bullets + master CV metnindeki sayilari da tanir.
+    profile_numbers = _profile_numbers(profile)
+    for item in profile.get("experience", []) or []:
+        if isinstance(item, dict):
+            profile_numbers.update(extract_numbers(str(item)))
+    for number in extract_numbers(text) - profile_numbers:
         if _YEAR_RE.fullmatch(number.strip()):
             continue  # years are handled by the date check below
         if _allowed(number.strip(), allow):
@@ -139,11 +145,25 @@ def validate_grounding(
             violations.append(Violation("degree", hint))
 
     # --- employers: organisation claims must be known ---
+    # facts["experience"]'tan gelen isverenler dogrulanmis kurulus sayilir
+    # (loader CV.txt'den doldurur; uydurma isveren hala ihlal verir).
     known_orgs = {str(profile.get("name", "")).lower()}
     known_orgs.update(allowed_skills)
     for item in profile.get("education", []) or []:
         if isinstance(item, dict) and item.get("institution"):
             known_orgs.add(str(item["institution"]).lower())
+    for item in profile.get("experience", []) or []:
+        if isinstance(item, dict):
+            for key in ("company", "employer", "organisation", "organization"):
+                if item.get(key):
+                    known_orgs.add(str(item[key]).lower())
+                    # "Huzur AS" -> "huzur" kisa adini da tanir
+                    for token in re.findall(r"[a-z0-9]+", str(item[key]).lower()):
+                        if len(token) >= 3:
+                            known_orgs.add(token)
+    for item in profile.get("projects", []) or []:
+        if isinstance(item, dict) and item.get("title"):
+            known_orgs.add(str(item["title"]).lower())
     for match in list(_ORG_RE.finditer(text)) + list(_WORKED_AT_RE.finditer(text)):
         org = match.group(1)
         if org.lower() not in known_orgs and not _allowed(org, allow):
@@ -157,9 +177,16 @@ def validate_grounding(
                 violations.append(Violation("authorship", hit.group(0).strip()))
 
     # --- dates: employment date ranges must be allowlisted (e.g. letterhead) ---
+    # facts["experience"] donemleri otomatik izinlidir (CV.txt'den gelir).
+    auto_allow = list(allow)
+    for item in profile.get("experience", []) or []:
+        if isinstance(item, dict):
+            for key in ("period", "duration", "dates"):
+                if item.get(key):
+                    auto_allow.append(str(item[key]))
     for match in _DATE_RANGE_RE.finditer(text):
         claim = match.group(0)
-        if not _allowed(claim, allow):
+        if not _allowed(claim, auto_allow):
             violations.append(Violation("date", claim))
 
     return violations

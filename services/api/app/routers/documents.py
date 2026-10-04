@@ -1,6 +1,8 @@
 """Documents: list, private file streaming, legacy download, backfill."""
 import asyncio
+import re
 from io import BytesIO
+from pathlib import PurePosixPath
 from typing import Any, Optional
 from uuid import UUID
 
@@ -109,13 +111,55 @@ async def _stream_document_bytes(
     return document, content
 
 
-def _document_filename(document: Document) -> str:
-    filename = f"{document.type}_{document.language}_v{document.version}"
-    if document.mime_type == "application/pdf":
-        filename += ".pdf"
-    elif "wordprocessingml" in document.mime_type:
-        filename += ".docx"
-    return filename
+def _slug(value: Any, maximum_length: int = 40) -> str:
+    """Portable ASCII slug for filenames (same rules as cv-generator)."""
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", str(value or "")).strip("_")
+    return (slug[:maximum_length].strip("_") or "untitled").lower()
+
+
+def _extension_for(mime_type: str) -> str:
+    if mime_type == "application/pdf":
+        return ".pdf"
+    if "wordprocessingml" in (mime_type or ""):
+        return ".docx"
+    return ""
+
+
+def _document_filename(document: Document, job: Optional[Job] = None) -> str:
+    # 1) Prefer the unique name stored at generation time:
+    #    "{candidate}_{company}_{role}_{jobid8}_CV_{lang}.pdf" etc.
+    #    This is already unique per job/employer.
+    meta = document.metadata_json or {}
+    if isinstance(meta, dict):
+        stored = meta.get("filename")
+        if isinstance(stored, str) and stored.strip():
+            # Never leak paths; keep only the basename.
+            base = PurePosixPath(stored.strip()).name
+            # Ensure it still carries an extension.
+            if "." not in base:
+                base += _extension_for(document.mime_type)
+            return base
+
+    # 2) Fallback for legacy rows without metadata: build a unique name
+    #    from company + title + type + version + short ids.
+    company = ""
+    title = ""
+    if isinstance(meta, dict):
+        company = str(meta.get("company") or "")
+        title = str(meta.get("title") or "")
+    if job is not None:
+        company = company or getattr(job, "company", "")
+        title = title or getattr(job, "title", "")
+    company_slug = _slug(company or "company")
+    title_slug = _slug(title or "role")
+    job_short = str(document.job_id)[:8]
+    doc_short = str(document.id)[:8]
+    type_label = "Cover_Letter" if document.type == "cover_letter" else "CV"
+    filename = (
+        f"{company_slug}_{title_slug}_{job_short}_"
+        f"{type_label}_{document.language}_v{document.version}_{doc_short}"
+    )
+    return filename + _extension_for(document.mime_type)
 
 
 @router.get("/{document_id}/file")
@@ -126,11 +170,12 @@ async def get_document_file(
 ) -> StreamingResponse:
     """Streams a private artifact; inline view or attachment download."""
     document, content = await _stream_document_bytes(document_id, session)
+    job = await session.get(Job, document.job_id)
     disposition = "attachment" if download else "inline"
     return StreamingResponse(
         BytesIO(content),
         media_type=document.mime_type,
-        headers={"Content-Disposition": f'{disposition}; filename="{_document_filename(document)}"'},
+        headers={"Content-Disposition": f'{disposition}; filename="{_document_filename(document, job)}"'},
     )
 
 
@@ -141,10 +186,11 @@ async def download_document(
 ) -> StreamingResponse:
     """Legacy attachment download (kept for compatibility; prefer /file)."""
     document, content = await _stream_document_bytes(document_id, session)
+    job = await session.get(Job, document.job_id)
     return StreamingResponse(
         BytesIO(content),
         media_type=document.mime_type,
-        headers={"Content-Disposition": f'attachment; filename="{_document_filename(document)}"'},
+        headers={"Content-Disposition": f'attachment; filename="{_document_filename(document, job)}"'},
     )
 
 

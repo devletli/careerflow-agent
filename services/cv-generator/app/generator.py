@@ -38,6 +38,13 @@ _COVER_AI_SENTENCE = {
     "de": "Bei einem ausgewählten Projekt habe ich die Architektur entworfen und mit AI-gestützter Entwicklung umgesetzt.",
 }
 
+# Kisa kisaltmalar CV'de buyuk harfle gosterilir (grounding case-insensitive).
+_UPPER_SKILLS = {"llm", "rag", "api", "aws", "gcp", "alm", "mcp", "mlops"}
+
+
+def _display_skill(skill: str) -> str:
+    return skill.upper() if skill.lower() in _UPPER_SKILLS else skill
+
 
 def detect_job_language(text: str) -> str:
     """Detect whether a job advert is primarily German or English."""
@@ -75,6 +82,7 @@ class DocumentGenerator:
         """
         language = detect_job_language(f"{title} {description}")
         tailoring = self._build_tailoring(title, description, matching_skills, profile)
+        experience = self._select_experience(profile, f"{title} {description}", limit=4)
         projects = [p for p in (profile.facts.get("projects") or []) if isinstance(p, dict)]
         project_lines = [self._project_line(p, language) for p in projects]
         ai_assisted = any(p.get("role") == "ai_assisted" for p in projects)
@@ -90,21 +98,21 @@ class DocumentGenerator:
                 1,
                 f"{filename_prefix}_CV_{language}.pdf",
                 "application/pdf",
-                self._build_pdf_cv(profile, company, title, language, tailoring, project_lines),
+                self._build_pdf_cv(profile, company, title, language, tailoring, project_lines, experience),
             ),
             (
                 "cv",
                 2,
                 f"{filename_prefix}_CV_{language}.docx",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                self._build_docx_cv(profile, company, title, language, tailoring, project_lines),
+                self._build_docx_cv(profile, company, title, language, tailoring, project_lines, experience),
             ),
             (
                 "cover_letter",
                 1,
                 f"{filename_prefix}_Cover_Letter_{language}.pdf",
                 "application/pdf",
-                self._build_pdf_cover_letter(profile, company, title, language, tailoring, ai_assisted),
+                self._build_pdf_cover_letter(profile, company, title, language, tailoring, ai_assisted, experience),
             ),
         ]
 
@@ -112,6 +120,13 @@ class DocumentGenerator:
         violations: List[Violation] = []
         allow = [company, title, date.today().strftime("%B %d, %Y"), date.today().strftime("%d.%m.%Y")]
         allow.extend(project_lines)
+        # Dogrulanmis deneyim: sirket + donem + secili madde metinleri izinlidir.
+        for exp in experience:
+            for key in ("company", "period", "title"):
+                if exp.get(key):
+                    allow.append(str(exp[key]))
+            for bullet in (exp.get("bullets") or [])[:4]:
+                allow.append(str(bullet))
         if ai_assisted:
             allow.extend(_COVER_AI_SENTENCE.values())
         for document_type, version, filename, mime_type, content in artifacts:
@@ -167,6 +182,55 @@ class DocumentGenerator:
         period = str(project.get("period") or "").strip()
         head = title + (f" ({period})" if period else "")
         return f"{head}: {phrase}.".strip()
+
+    @staticmethod
+    def _select_experience(profile: CanonicalProfile, job_text: str, limit: int = 4) -> List[Dict]:
+        """Is ilanina gore deneyimleri sirala; her deneyimden en ilgili maddeleri sec.
+
+        Sadece facts["experience"] kullanilir (CV.txt'den gelir). Uydurma yok:
+        secim = sirala + kisalt, icerik aynen korunur.
+        """
+        all_exp = [e for e in (profile.facts.get("experience") or []) if isinstance(e, dict)]
+        if not all_exp:
+            return []
+        job_low = job_text.lower()
+        tokens = set(re.findall(r"[a-z0-9äöüß+#./-]{3,}", job_low))
+        scored = []
+        for idx, exp in enumerate(all_exp):
+            haystack = " ".join(
+                [str(exp.get("title", "")), str(exp.get("company", ""))]
+                + [str(b) for b in (exp.get("bullets") or [])]
+            ).lower()
+            overlap = sum(1 for t in tokens if t in haystack)
+            # Guncel deneyimi one cikar (siralamayi koru): ilk bloklara kucuk bonus.
+            scored.append((overlap, -idx, exp))
+        scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        selected: List[Dict] = []
+        for _, _, exp in scored[:limit]:
+            bullets = [str(b) for b in (exp.get("bullets") or []) if str(b).strip()]
+            # Madde icinde ilan anahtar kelimesi geceni one al, en fazla 3 madde.
+            ranked = sorted(
+                bullets,
+                key=lambda b: sum(1 for t in tokens if t in b.lower()),
+                reverse=True,
+            )[:3]
+            selected.append(
+                {
+                    "title": str(exp.get("title", "")).strip(),
+                    "company": str(exp.get("company", "")).strip(),
+                    "period": str(exp.get("period", "")).strip(),
+                    "location": str(exp.get("location", "")).strip(),
+                    "bullets": ranked or bullets[:3],
+                }
+            )
+        # CV'de kronolojik okunabilirlik icin orijinal siraya geri diz.
+        selected.sort(
+            key=lambda s: next(
+                (i for i, e in enumerate(all_exp) if e.get("title") == s["title"] and e.get("company") == s["company"]),
+                999,
+            )
+        )
+        return selected
 
     @staticmethod
     def _extract_text(filename: str, content: bytes) -> str | None:
@@ -250,17 +314,39 @@ class DocumentGenerator:
         """Professional third-person summary grounded only in verified facts."""
         positioning = ", ".join(profile.preferences.get("preferred_roles", [])[:3])
         languages = ", ".join(f"{key} ({value})" for key, value in profile.languages.items())
+        # En guncel dogrulanmis rol (CV.txt deneyiminden) ozete somutluk katar.
+        recent = ""
+        experiences = [e for e in (profile.facts.get("experience") or []) if isinstance(e, dict)]
+        if experiences:
+            first = experiences[0]
+            head = str(first.get("title", "")).strip()
+            comp = str(first.get("company", "")).strip()
+            if head and comp:
+                recent = f"{head} @ {comp}"
+            elif head:
+                recent = head
         if language == "de":
-            return (
+            base = (
                 f"{positioning} mit {profile.experience_years} Jahren Berufserfahrung. "
                 f"Schwerpunkte für diese Rolle: {focus}. Sprachen: {languages}."
             )
-        return (
+            return f"{base} Aktuell: {recent}." if recent else base
+        base = (
             f"{positioning} with {profile.experience_years} years of professional experience. "
             f"Focus areas for this role: {focus}. Languages: {languages}."
         )
+        return f"{base} Most recent: {recent}." if recent else base
 
-    def _build_pdf_cv(self, profile, company, title, language, tailoring, project_lines=None) -> bytes:
+    def _experience_heading(self, exp: Dict, language: str) -> str:
+        head = exp.get("title", "")
+        comp = exp.get("company", "")
+        period = exp.get("period", "")
+        loc = exp.get("location", "")
+        right = " | ".join(p for p in (period, loc) if p)
+        left = " - ".join(p for p in (head, comp) if p)
+        return f"{left} ({right})" if right else left
+
+    def _build_pdf_cv(self, profile, company, title, language, tailoring, project_lines=None, experience=None) -> bytes:
         buffer = io.BytesIO()
         document = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=40, rightMargin=40, topMargin=36, bottomMargin=36)
         styles = self._base_styles()
@@ -277,7 +363,17 @@ class DocumentGenerator:
             Paragraph("Profile Summary" if language == "en" else "Profilzusammenfassung", styles["heading"]),
             Paragraph(escape(summary), styles["body"]),
             Paragraph("Role-Relevant Verified Skills" if language == "en" else "Rollenrelevante verifizierte Kenntnisse", styles["heading"]),
-            Paragraph(" &bull; ".join(escape(skill) for skill in skills), styles["body"]),
+            Paragraph(" &bull; ".join(escape(_display_skill(skill)) for skill in skills), styles["body"]),
+        ]
+        if experience:
+            elements.append(
+                Paragraph("Professional Experience" if language == "en" else "Berufserfahrung", styles["heading"])
+            )
+            for exp in experience:
+                elements.append(Paragraph(f"<b>{escape(self._experience_heading(exp, language))}</b>", styles["body"]))
+                for bullet in (exp.get("bullets") or [])[:3]:
+                    elements.append(Paragraph(f"&bull; {escape(str(bullet))}", styles["body"]))
+        elements.extend([
             Paragraph("Candidate Profile" if language == "en" else "Kandidatenprofil", styles["heading"]),
             Paragraph(
                 f"Primary positioning: {escape(', '.join(profile.preferences.get('preferred_roles', [])[:6]))}. "
@@ -285,7 +381,7 @@ class DocumentGenerator:
                 styles["body"],
             ),
             Paragraph("Additional Verified Skills" if language == "en" else "Weitere verifizierte Kenntnisse", styles["heading"]),
-            Paragraph(" &bull; ".join(escape(skill) for skill in profile.skills if skill not in skills), styles["body"]),
+            Paragraph(" &bull; ".join(escape(_display_skill(skill)) for skill in profile.skills if skill not in skills), styles["body"]),
             Paragraph("Education & Certifications" if language == "en" else "Ausbildung & Zertifizierungen", styles["heading"]),
             Paragraph(
                 f"Education: {escape('; '.join(item.get('degree', '') + ' - ' + item.get('institution', '') for item in profile.education))}<br/>"
@@ -294,7 +390,7 @@ class DocumentGenerator:
             ),
             Paragraph("Languages" if language == "en" else "Sprachen", styles["heading"]),
             Paragraph(escape(" | ".join(f"{key}: {value}" for key, value in profile.languages.items())), styles["body"]),
-        ]
+        ])
         if project_lines:
             elements.extend([
                 Paragraph("Selected Projects" if language == "en" else "Ausgewählte Projekte", styles["heading"]),
@@ -303,7 +399,7 @@ class DocumentGenerator:
         document.build(elements)
         return buffer.getvalue()
 
-    def _build_docx_cv(self, profile, company, title, language, tailoring, project_lines=None) -> bytes:
+    def _build_docx_cv(self, profile, company, title, language, tailoring, project_lines=None, experience=None) -> bytes:
         document = docx.Document()
         document.add_heading(profile.name, level=0)
         contact = document.add_paragraph()
@@ -314,6 +410,12 @@ class DocumentGenerator:
         document.add_paragraph(self._profile_summary(profile, language, focus))
         document.add_heading("Role-Relevant Verified Skills" if language == "en" else "Rollenrelevante verifizierte Kenntnisse", level=1)
         document.add_paragraph(" • ".join(tailoring["skills"]))
+        if experience:
+            document.add_heading("Professional Experience" if language == "en" else "Berufserfahrung", level=1)
+            for exp in experience:
+                document.add_paragraph(self._experience_heading(exp, language)).runs[0].bold = True
+                for bullet in (exp.get("bullets") or [])[:3]:
+                    document.add_paragraph(str(bullet), style="List Bullet")
         document.add_heading("Candidate Positioning" if language == "en" else "Kandidatenpositionierung", level=1)
         document.add_paragraph(" • ".join(profile.preferences.get("preferred_roles", [])[:8]))
         document.add_heading("Additional Verified Skills" if language == "en" else "Weitere verifizierte Kenntnisse", level=1)
@@ -335,12 +437,36 @@ class DocumentGenerator:
         document.save(buffer)
         return buffer.getvalue()
 
-    def _build_pdf_cover_letter(self, profile, company, title, language, tailoring, ai_assisted=False) -> bytes:
+    def _cover_experience_sentence(self, language: str, experience) -> str:
+        """En ilgili dogrulanmis deneyimden tek somut cumle (isyeri + donem + madde)."""
+        if not experience:
+            return ""
+        top = experience[0]
+        head = str(top.get("title", "")).strip()
+        comp = str(top.get("company", "")).strip()
+        period = str(top.get("period", "")).strip()
+        bullet = str((top.get("bullets") or [""])[0]).strip()
+        # grounding: cumledeki her parca zaten allow-listed fact'tir.
+        if not (head and comp):
+            return ""
+        where = f"{escape(head)} @ {escape(comp)}" + (f" ({escape(period)})" if period else "")
+        if language == "de":
+            s = f"Zuletzt: {where}."
+            if bullet:
+                s += f" U. a.: {escape(bullet[:220])}."
+            return s
+        s = f"Most recently: {where}."
+        if bullet:
+            s += f" Including: {escape(bullet[:220])}."
+        return s
+
+    def _build_pdf_cover_letter(self, profile, company, title, language, tailoring, ai_assisted=False, experience=None) -> bytes:
         buffer = io.BytesIO()
         document = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=45, rightMargin=45, topMargin=45, bottomMargin=45)
         styles = self._base_styles()
-        top_skills = [escape(skill) for skill in tailoring["skills"][:3]]
+        top_skills = [escape(_display_skill(skill)) for skill in tailoring["skills"][:3]]
         focus = ", ".join(tailoring["keywords"]) or ("the advertised focus areas" if language == "en" else "die ausgeschriebenen Schwerpunkte")
+        exp_sentence = self._cover_experience_sentence(language, experience or [])
         location = profile.facts.get("location", {}) or {}
         city = location.get("city", "")
         today = date.today().strftime("%B %d, %Y" if language == "en" else "%d.%m.%Y")
@@ -348,7 +474,8 @@ class DocumentGenerator:
         contact = " &bull; ".join(escape(part) for part in self._contact_parts(profile))
         if language == "de":
             paragraphs = [
-                f"Sehr geehrtes Recruiting-Team bei {escape(company)},",                f"mit {profile.experience_years} Jahren Berufserfahrung als {top_skills[0] if top_skills else 'Fachkraft'} "
+                f"Sehr geehrtes Recruiting-Team bei {escape(company)},",
+                f"mit {profile.experience_years} Jahren Berufserfahrung als {top_skills[0] if top_skills else 'Fachkraft'} "
                 f"bewerbe ich mich für die Position <b>{escape(title)}</b>. Besonders relevant sind meine "
                 f"verifizierten Kenntnisse in {', '.join(f'<b>{skill}</b>' for skill in top_skills)}.",
                 f"Die Ausschreibung betont {escape(focus)}. Diese Schwerpunkte decken sich mit meiner dokumentierten "
@@ -356,6 +483,8 @@ class DocumentGenerator:
                 "Gerne erläutere ich in einem Gespräch, wie meine Erfahrung zu den Anforderungen der Position passt.",
                 f"Mit freundlichen Grüßen,<br/>{escape(profile.name)}",
             ]
+            if exp_sentence:
+                paragraphs.insert(len(paragraphs) - 1, exp_sentence)
         else:
             connections = (
                 f"My verified background covers {', '.join(f'<b>{skill}</b>' for skill in top_skills)} "
@@ -372,6 +501,8 @@ class DocumentGenerator:
                 "I would welcome the opportunity to discuss how this background fits your requirements.",
                 f"Sincerely,<br/>{escape(profile.name)}",
             ]
+            if exp_sentence:
+                paragraphs.insert(len(paragraphs) - 1, exp_sentence)
         if ai_assisted:
             paragraphs.insert(len(paragraphs) - 1, _COVER_AI_SENTENCE[language])
         elements = [
