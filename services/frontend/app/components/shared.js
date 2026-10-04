@@ -7,6 +7,30 @@ export function docTypeLabel(type) {
   return type === "cover_letter" ? "CL" : "CV";
 }
 
+export async function deleteResource(path) {
+  return fetchJson(path, { method: "DELETE" });
+}
+
+export function ConfirmDeleteDialog({ open, title, message, onCancel, onConfirm, loading }) {
+  if (!open) return null;
+  return (
+    <div className="modal-backdrop">
+      <div className="modal" role="dialog" aria-modal="true">
+        <h3>{title}</h3>
+        <p className="muted">{message}</p>
+        <div className="modal-actions">
+          <button type="button" className="refresh-btn" onClick={onCancel} disabled={loading}>
+            {STRINGS.cancelBtn || STRINGS.cancel}
+          </button>
+          <button type="button" className="danger-btn" onClick={onConfirm} disabled={loading}>
+            {loading ? STRINGS.deleting : STRINGS.deleteBtn}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function formatLlmStatus(llm) {
   if (!llm || !llm.state) return STRINGS.statusUnknown;
   const model = llm.model ? ` (${llm.model})` : "";

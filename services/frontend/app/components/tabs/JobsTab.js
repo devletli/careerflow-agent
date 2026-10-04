@@ -3,7 +3,7 @@
 import { formatDate, StatusPill, STRINGS } from "../../lib";
 import { SearchBar, Toolbar } from "../controls";
 
-export default function JobsTab({ jobs, query, onQueryChange, error, loading, refresh }) {
+export default function JobsTab({ jobs, query, onQueryChange, error, loading, refresh, onDelete, deletingId }) {
   // Filtreleme backend'de (?q=); burada yalnızca backend yanıtı render edilir.
   const rows = jobs || [];
   return (
@@ -11,7 +11,7 @@ export default function JobsTab({ jobs, query, onQueryChange, error, loading, re
       <Toolbar label={STRINGS.jobsToolbar} onRefresh={refresh} count={rows?.length} />
       <SearchBar value={query} onChange={onQueryChange} />
       {error && <div className="error-banner">{error}</div>}
-      <table className="responsive">
+      <table className="responsive table-fixed jobs-table">
         <thead>
           <tr>
             <th>{STRINGS.colJob}</th>
@@ -20,7 +20,7 @@ export default function JobsTab({ jobs, query, onQueryChange, error, loading, re
             <th>{STRINGS.colMatch}</th>
             <th>{STRINGS.colDocs}</th>
             <th>{STRINGS.colUpdated}</th>
-            <th>{STRINGS.colLink}</th>
+            <th>{STRINGS.colActions}</th>
           </tr>
         </thead>
         <tbody>
@@ -41,10 +41,20 @@ export default function JobsTab({ jobs, query, onQueryChange, error, loading, re
               </td>
               <td data-label={STRINGS.colDocs}>{j.document_count ?? 0}</td>
               <td data-label={STRINGS.colUpdated} className="cell-wrap">{formatDate(j.created_at)}</td>
-              <td data-label={STRINGS.colLink}>
+              <td data-label={STRINGS.colActions} className="actions-sticky">
                 <a className="link" href={j.url} target="_blank" rel="noreferrer">
                   {STRINGS.viewLink}
                 </a>
+                <button
+                  type="button"
+                  className="danger-btn"
+                  aria-label={`${STRINGS.deleteBtn}: ${j.company} — ${j.title}`}
+                  title={STRINGS.deleteBtn}
+                  onClick={() => onDelete && onDelete(j)}
+                  disabled={deletingId === j.id}
+                >
+                  {deletingId === j.id ? STRINGS.deleting : STRINGS.deleteBtn}
+                </button>
               </td>
             </tr>
           ))}

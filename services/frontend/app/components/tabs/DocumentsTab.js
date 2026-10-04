@@ -4,7 +4,7 @@ import { StatusPill, STRINGS } from "../../lib";
 import { SearchBar, Toolbar } from "../controls";
 import { docTypeLabel } from "../shared";
 
-export default function DocumentsTab({ documents, query, onQueryChange, error, loading, refresh }) {
+export default function DocumentsTab({ documents, query, onQueryChange, error, loading, refresh, onDelete, deletingId }) {
   // Liste: job+tur basina SON surum; eski surumler yalnizca detay sayfasinda.
   // Arama backend'de (?q=).
   const rows = (documents || []).filter((d) => d.is_latest);
@@ -13,13 +13,14 @@ export default function DocumentsTab({ documents, query, onQueryChange, error, l
       <Toolbar label={STRINGS.docsToolbar} onRefresh={refresh} count={rows?.length} />
       <SearchBar value={query} onChange={onQueryChange} />
       {error && <div className="error-banner">{error}</div>}
-      <table className="responsive">
+      <table className="responsive table-fixed documents-table">
         <thead>
           <tr>
             <th>{STRINGS.colType}</th>
             <th>{STRINGS.colJob}</th>
             <th>{STRINGS.colApplication}</th>
             <th>{STRINGS.colFile}</th>
+            <th>{STRINGS.colActions}</th>
           </tr>
         </thead>
         <tbody>
@@ -57,10 +58,22 @@ export default function DocumentsTab({ documents, query, onQueryChange, error, l
                   {STRINGS.viewFile}
                 </a>
               </td>
+              <td data-label={STRINGS.colActions} className="document-actions actions-sticky">
+                <button
+                  type="button"
+                  className="danger-btn"
+                  aria-label={`${STRINGS.deleteBtn}: ${document.type} ${document.language}`}
+                  title={STRINGS.deleteBtn}
+                  onClick={() => onDelete && onDelete(document)}
+                  disabled={deletingId === document.id}
+                >
+                  {deletingId === document.id ? STRINGS.deleting : STRINGS.deleteBtn}
+                </button>
+              </td>
             </tr>
           ))}
           {rows.length === 0 && (
-            <tr><td colSpan={4} className="muted">{loading ? STRINGS.loading : STRINGS.noDocumentsYet}</td></tr>
+            <tr><td colSpan={5} className="muted">{loading ? STRINGS.loading : STRINGS.noDocumentsYet}</td></tr>
           )}
         </tbody>
       </table>

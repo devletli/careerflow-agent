@@ -9,6 +9,10 @@
  ],
  [
   "/api/v1/applications/{application_id}",
+  "DELETE"
+ ],
+ [
+  "/api/v1/applications/{application_id}",
   "GET"
  ],
  [
@@ -36,6 +40,10 @@
   "GET"
  ],
  [
+  "/api/v1/documents/{document_id}",
+  "DELETE"
+ ],
+ [
   "/api/v1/documents/{document_id}/download",
   "GET"
  ],
@@ -50,6 +58,10 @@
  [
   "/api/v1/jobs",
   "GET"
+ ],
+ [
+  "/api/v1/jobs/{job_id}",
+  "DELETE"
  ],
  [
   "/api/v1/pipeline/actions",

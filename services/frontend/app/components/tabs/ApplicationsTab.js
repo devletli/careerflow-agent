@@ -5,7 +5,7 @@ import { formatDate, StatusPill, STRINGS } from "../../lib";
 import { distinctStatuses, SearchBar, Toolbar } from "../controls";
 import { DocBadges, UrlAddDialog } from "../shared";
 
-export default function ApplicationsTab({ applications, query, onQueryChange, statusFilter, onStatusChange, minScore, onMinScoreChange, error, loading, refresh, onExecute, busyId }) {
+export default function ApplicationsTab({ applications, query, onQueryChange, statusFilter, onStatusChange, minScore, onMinScoreChange, error, loading, refresh, onExecute, busyId, onDelete }) {
   // Filtreleme backend'de (?q=&status=&min_score=); burada yalnızca yanıt render edilir.
   const rows = applications || [];
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -55,7 +55,7 @@ export default function ApplicationsTab({ applications, query, onQueryChange, st
         showScore
       />
       {error && <div className="error-banner">{error}</div>}
-      <table className="responsive table-fixed">
+      <table className="responsive table-fixed applications-table">
         <thead>
           <tr>
             <th>{STRINGS.colJob}</th>
@@ -118,6 +118,17 @@ export default function ApplicationsTab({ applications, query, onQueryChange, st
                       {STRINGS.goToDetail}
                     </a>
                   )}
+                  {/* destructive action: always separate, never via getAvailableActions */}
+                  <button
+                    type="button"
+                    className="danger-btn"
+                    aria-label={`${STRINGS.deleteBtn}: ${a.company} — ${a.title}`}
+                    title={STRINGS.deleteBtn}
+                    onClick={() => onDelete && onDelete(a)}
+                    disabled={busyId === a.id}
+                  >
+                    {STRINGS.deleteBtn}
+                  </button>
                 </td>
             </tr>
             );

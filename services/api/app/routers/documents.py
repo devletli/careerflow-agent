@@ -146,3 +146,42 @@ async def download_document(
         media_type=document.mime_type,
         headers={"Content-Disposition": f'attachment; filename="{_document_filename(document)}"'},
     )
+
+
+@router.delete("/{document_id}")
+async def delete_document(
+    document_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Deletes exactly one document version plus its MinIO object.
+
+    Versioning is preserved: only the requested row is removed, never the
+    whole (job_id, type, language) family. The MinIO object is removed only
+    when no other document row still references the same (bucket, key).
+    """
+    document = await session.get(Document, document_id)
+    if document is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Document not found.",
+        )
+    bucket, key = document.minio_bucket, document.minio_key
+    await session.delete(document)
+    await session.flush()
+    others = (
+        await session.execute(
+            select(Document).where(
+                Document.minio_bucket == bucket,
+                Document.minio_key == key,
+            )
+        )
+    ).scalars().first()
+    if others is None:
+        try:
+            ok = await asyncio.to_thread(minio_client.delete_object, key, bucket)
+        except Exception as exc:  # noqa: BLE001 - logged, DB row already gone
+            logger.error("MinIO cleanup failed for document_id=%s: %s", document_id, exc)
+            ok = False
+        if not ok:
+            logger.error("MinIO cleanup failed for document_id=%s", document_id)
+    return {"id": str(document_id), "deleted": True}

@@ -303,3 +303,42 @@ async def get_application_detail(
         ],
         "created_at": application.created_at.isoformat() if application.created_at else None,
     }
+
+
+_RUNNING_STATUSES = frozenset({"RUNNING", "FILLING", "SUBMITTING"})
+
+
+@router.delete("/{application_id}")
+async def delete_application(
+    application_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Deletes one application without touching its job.
+
+    Questions/answers cascade via ORM relationships. Linked documents are
+    unlinked (application_id -> NULL) so job-level artifacts survive.
+    AutomationRun rows use SET NULL and are preserved as audit trail.
+    No business events are published for deletions.
+    """
+    application = await session.get(Application, application_id)
+    if application is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Application not found.",
+        )
+    if application.status in _RUNNING_STATUSES:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=f"Application is {application.status}; deletion is blocked while automation is active.",
+        )
+    # Unlink job-level documents instead of deleting another entity's data.
+    linked = (
+        await session.execute(
+            select(Document).where(Document.application_id == application.id)
+        )
+    ).scalars().all()
+    for doc in linked:
+        doc.application_id = None
+    await session.delete(application)
+    await session.flush()
+    return {"id": str(application_id), "deleted": True}

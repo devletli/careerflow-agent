@@ -492,3 +492,93 @@ a.link:hover {
   font-size: 1.1rem;
   font-weight: 600;
 }
+
+/* --- Delete actions (task3) --- */
+
+.danger-btn {
+  border: 1px solid var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--err);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.danger-btn:hover:not(:disabled) {
+  filter: brightness(0.97);
+  text-decoration: underline;
+}
+
+.danger-btn:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 16px;
+}
+
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 20px;
+  max-width: 440px;
+  width: 100%;
+}
+
+.modal h3 {
+  margin: 0 0 8px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+/* Controlled column widths so Actions never forces horizontal scroll. */
+.table-fixed.jobs-table th:nth-child(1) { width: 26%; }
+.table-fixed.jobs-table th:nth-child(2) { width: 13%; }
+.table-fixed.jobs-table th:nth-child(3) { width: 10%; }
+.table-fixed.jobs-table th:nth-child(4) { width: 10%; }
+.table-fixed.jobs-table th:nth-child(5) { width: 7%; }
+.table-fixed.jobs-table th:nth-child(6) { width: 14%; }
+.table-fixed.jobs-table th:nth-child(7) { width: 20%; }
+
+.table-fixed.applications-table th:nth-child(1) { width: 28%; }
+.table-fixed.applications-table th:nth-child(2) { width: 8%; }
+.table-fixed.applications-table th:nth-child(3) { width: 12%; }
+.table-fixed.applications-table th:nth-child(4) { width: 12%; }
+.table-fixed.applications-table th:nth-child(5) { width: 12%; }
+.table-fixed.applications-table th:nth-child(6) { width: 28%; }
+
+.table-fixed.documents-table th:nth-child(1) { width: 16%; }
+.table-fixed.documents-table th:nth-child(2) { width: 26%; }
+.table-fixed.documents-table th:nth-child(3) { width: 16%; }
+.table-fixed.documents-table th:nth-child(4) { width: 14%; }
+.table-fixed.documents-table th:nth-child(5) { width: 28%; }
+
+.table-fixed td.actions-sticky {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.table-fixed td.actions-sticky > * {
+  flex-shrink: 0;
+  white-space: nowrap;
+}

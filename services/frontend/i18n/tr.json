@@ -99,5 +99,17 @@
   "settingsHintB": "komutuyla yeniden başlatın:",
   "colService": "Servis",
   "colVersion": "Sürüm",
-  "statusUnknown": "bilinmiyor"
+  "statusUnknown": "bilinmiyor",
+  "deleteBtn": "Sil",
+  "deleting": "Siliniyor…",
+  "cancelBtn": "Vazgeç",
+  "colActions": "Aksiyonlar",
+  "confirmDeleteJob": "Bu ilan silinsin mi?",
+  "confirmDeleteApplication": "Bu başvuru silinsin mi?",
+  "confirmDeleteDocument": "Bu belge silinsin mi?",
+  "deleteJobDescription": "Bu işlem ilanı ve bağlı verileri kalıcı olarak siler.",
+  "deleteApplicationDescription": "Bu işlem başvuruyu ve bağlı başvuru verilerini kalıcı olarak siler.",
+  "deleteDocumentDescription": "Bu işlem belgeyi ve depolanan dosyayı kalıcı olarak siler.",
+  "deleteFailed": "Silme başarısız oldu.",
+  "cannotDeleteRunning": "Çalışan başvurular otomasyon aktifken silinemez."
 }

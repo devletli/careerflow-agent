@@ -131,6 +131,28 @@ class MinIOClient:
                 return False
             raise
 
+    def delete_object(self, key: str, bucket_name: Optional[str] = None) -> bool:
+        """Deletes an object from MinIO. Missing objects count as success.
+
+        Returns True when the object is gone (deleted or never existed),
+        False only when the backend reports a real failure. Callers perform
+        DB deletion first (PostgreSQL authoritative) and treat False as a
+        logged warning -- the DB row is already gone, so the response must
+        not silently claim storage cleanup succeeded.
+        """
+        target_bucket = bucket_name or settings.MINIO_BUCKET
+        try:
+            self.client.remove_object(target_bucket, key)
+            return True
+        except S3Error as e:
+            if e.code in ("NoSuchKey", "NoSuchBucket"):
+                return True
+            logger.error("Failed to delete object %s/%s: %s", target_bucket, key, e)
+            return False
+        except Exception as e:  # noqa: BLE001 - storage backend best-effort
+            logger.error("Failed to delete object %s/%s: %s", target_bucket, key, e)
+            return False
+
     def get_presigned_url(
         self,
         key: str,

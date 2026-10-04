@@ -99,5 +99,17 @@
   "settingsHintB": "file and restart the stack with",
   "colService": "Service",
   "colVersion": "Version",
-  "statusUnknown": "unknown"
+  "statusUnknown": "unknown",
+  "deleteBtn": "Delete",
+  "deleting": "Deleting…",
+  "cancelBtn": "Cancel",
+  "colActions": "Actions",
+  "confirmDeleteJob": "Delete this job?",
+  "confirmDeleteApplication": "Delete this application?",
+  "confirmDeleteDocument": "Delete this document?",
+  "deleteJobDescription": "This will permanently remove the job and its dependent data.",
+  "deleteApplicationDescription": "This will permanently remove the application and its dependent application data.",
+  "deleteDocumentDescription": "This will permanently remove the document and its stored artifact.",
+  "deleteFailed": "Deletion failed.",
+  "cannotDeleteRunning": "Running applications cannot be deleted while automation is active."
 }
