@@ -16,7 +16,29 @@ ROOT = Path(__file__).resolve().parents[2]
 PAGE = ROOT / "services" / "frontend" / "app" / "page.js"
 CSS = ROOT / "services" / "frontend" / "app" / "globals.css"
 API = ROOT / "services" / "api" / "app" / "main.py"
+API_ROUTERS = ROOT / "services" / "api" / "app" / "routers"
 NEXT_CONFIG = ROOT / "services" / "frontend" / "next.config.js"
+
+
+def _backend_sources() -> str:
+    return "\n".join(
+        [API.read_text(encoding="utf-8")]
+        + [p.read_text(encoding="utf-8") for p in sorted(API_ROUTERS.glob("*.py"))]
+    )
+
+
+def _backend_routes() -> set:
+    """Router prefix'leriyle birlesmis tam backend yollari (Gorev 3 sonrasi)."""
+    routes = set()
+    for src_file in [API, *sorted(API_ROUTERS.glob("*.py"))]:
+        src = src_file.read_text(encoding="utf-8")
+        prefix = ""
+        m = re.search(r'prefix="([^"]*)"', src)
+        if m:
+            prefix = m.group(1)
+        for path in re.findall(r'@(?:app|router)\.(?:get|post|patch|put|delete)\(\s*"([^"]*)"', src):
+            routes.add(prefix + path)
+    return routes
 
 
 def test_tables_scroll_inside_panel():
@@ -104,7 +126,7 @@ def test_tables_show_loading_state():
 def test_frontend_api_paths_exist_in_backend():
     frontend_paths = set(re.findall(r'"(/api/[^"?]*)', PAGE.read_text(encoding="utf-8")))
     frontend_paths |= set(re.findall(r"'(/api/[^'?]*)", PAGE.read_text(encoding="utf-8")))
-    backend_routes = set(re.findall(r'@app\.(?:get|post|patch|put|delete)\("([^"]*)"', API.read_text(encoding="utf-8")))
+    backend_routes = _backend_routes()
     # dynamic segments match any concrete value
     patterns = [re.sub(r"\{[^}]+\}", "[^/]+", r) + r"$" for r in backend_routes]
     missing = [p for p in sorted(frontend_paths) if not any(re.match(pat, p) for pat in patterns)]
@@ -134,10 +156,11 @@ def test_documents_use_safe_download_not_raw_paths():
 
 
 def test_download_endpoint_streams_safely():
-    api = API.read_text(encoding="utf-8")
-    assert '"/api/v1/documents/{document_id}/download"' in api
-    assert "StreamingResponse" in api and "attachment;" in api
-    assert "Document not found" in api  # 404 for unknown ids, no arbitrary object access
+    routes = _backend_routes()
+    assert "/api/v1/documents/{document_id}/download" in routes
+    docs = (API_ROUTERS / "documents.py").read_text(encoding="utf-8")
+    assert "StreamingResponse" in docs and "attachment;" in docs
+    assert "Document not found" in docs  # 404 for unknown ids, no arbitrary object access
 
 
 def test_tab_navigation_is_url_driven():
@@ -174,6 +197,7 @@ def test_gui_action_contract_explicit():
     assert "onClick={() => onSubmit(a)}" not in src, "implicit onSubmit handler must not remain"
     assert "function getAvailableActions(application)" in src
     assert "submittingApplicationId" not in src, "row actions must not depend on submittingApplicationId"
-    api = API.read_text(encoding="utf-8")
-    assert '"/api/v1/applications/{application_id}/execute"' in api
+    api = (API_ROUTERS / "applications.py").read_text(encoding="utf-8")
+    assert "/{application_id}/execute" in api
+    assert _backend_routes() >= {"/api/v1/applications/{application_id}/execute"}
     assert "prepare" in api and "retry" in api and "continue" in api

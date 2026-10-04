@@ -239,7 +239,7 @@ def test_pipeline_action_rate_limited(client, seed, monkeypatch):
     async def deny(action, redis):
         raise RateLimited(action=action, retry_after_seconds=60)
 
-    monkeypatch.setattr(_api, "check_action_limit", deny)
+    monkeypatch.setattr("shared.infra.rate_limit.check_action_limit", deny)
     r = client.post(
         "/api/v1/pipeline/actions",
         json={"action": "discover", "confirmed": False},
@@ -252,7 +252,7 @@ def test_pipeline_action_allowed_when_limiter_passes(client, seed, monkeypatch):
     async def allow(action, redis):
         return None
 
-    monkeypatch.setattr(_api, "check_action_limit", allow)
+    monkeypatch.setattr("shared.infra.rate_limit.check_action_limit", allow)
     with patch.object(
         _api.redis_bus, "publish", new=AsyncMock(return_value="msg-1")
     ):
@@ -282,7 +282,7 @@ def test_pipeline_fill_requires_single_use_token(client, seed, monkeypatch):
     async def allow(action, redis):
         return None
 
-    monkeypatch.setattr(_api, "check_action_limit", allow)
+    monkeypatch.setattr("shared.infra.rate_limit.check_action_limit", allow)
     with patch.object(
         _api.redis_bus, "publish", new=AsyncMock(return_value="msg-1")
     ):
@@ -302,7 +302,7 @@ def test_pipeline_token_bound_to_action(client, seed, monkeypatch):
     async def allow(action, redis):
         return None
 
-    monkeypatch.setattr(_api, "check_action_limit", allow)
+    monkeypatch.setattr("shared.infra.rate_limit.check_action_limit", allow)
     token = _mint(client, "fill_applications")
     r = client.post(
         "/api/v1/pipeline/actions",

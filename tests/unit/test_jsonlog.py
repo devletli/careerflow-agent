@@ -54,5 +54,8 @@ def test_orchestrator_binds_correlation_per_event():
 def test_api_action_logs_with_correlation_extra():
     import pathlib
 
-    src = (pathlib.Path(__file__).resolve().parents[2] / "services" / "api" / "app" / "main.py").read_text(encoding="utf-8")
+    src = (
+        pathlib.Path(__file__).resolve().parents[2]
+        / "services" / "api" / "app" / "routers" / "pipeline.py"
+    ).read_text(encoding="utf-8")
     assert 'extra={"correlation_id": correlation_id' in src
