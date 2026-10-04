@@ -22,6 +22,9 @@ calibrate:
 collect-calibration:
 	python scripts/collect_calibration_ads.py
 
+export-labels:
+	docker compose run --rm -v $(CURDIR)/tests/golden:/out orchestrator python scripts/export_for_labeling.py 40 /out/real_labeled.jsonl
+
 lint:
 	python -m ruff check .
 	python -m mypy shared/ services/api/app/

@@ -224,6 +224,9 @@ profile change: re-run the sweep and update this table.
 > Uyarı: bu tablo sentetik sette üretildi, gerçek ilanlarla doğrulanmadı;
 > eşiği değiştirmeden önce `make calibrate` çalıştırılmalı (etiketli gerçek
 > ilanlar: `tests/golden/real_labeled.jsonl`, şema: `real_labeled.example.jsonl`).
+> İlan toplamak için iki yol: `make collect-calibration` (herkese açık
+> kaynaktan çeker, etiketler boş gelir) veya `make export-labels` (DB'deki
+> eşleşmiş ilanları skor/bandıyla yazar, etiketler null gelir).
 
 Hard gates (`shared/matching/gates.py`) apply on top: `Senior DevOps Engineer`
 and `Principal` titles flip `strong-devops` (99.8) and `seniority-principal`

@@ -46,17 +46,20 @@ def main(path="tests/golden/real_labeled.jsonl"):
         )
         return 2
     rows = [r for r in load(path) if r.get("label") in ("QUALIFIED", "REVIEW", "NOT_QUALIFIED")]
-    if len(rows) < 10:
+    if len(rows) < 15:
         print(  # noqa: T201 - CLI
-            f"etiketli satir yetersiz ({len(rows)}): once real_labeled.jsonl icindeki "
-            '"label" alanlarini doldurun (en az 10)'
+            f"yetersiz veri ({len(rows)} etiketli, en az 15 gerekli): once real_labeled.jsonl "
+            'icindeki "label" alanlarini doldurun'
         )
         return 2
     try:
         profile = load_canonical_profile()
     except Exception as exc:
-        print(f"profil yuklenemedi (profile/profile.yaml + preferences.yaml gerekli): {exc}")  # noqa: T201 - CLI
+        print(  # noqa: T201 - CLI
+            f"profil yuklenemedi (profile/profile.yaml + preferences.yaml gerekli): {exc}"
+        )
         return 2
+    print(f"profil: satisfies={profile.satisfies}")  # noqa: T201 - CLI
     engine = _load_matcher().JobMatchingEngine()
     scored = []
     for row in rows:

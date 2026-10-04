@@ -29,8 +29,8 @@ def test_real_calibration_heldout_precision():
 
     rows = [json.loads(line) for line in REAL.read_text(encoding="utf-8").splitlines() if line.strip()]
     rows = [r for r in rows if r.get("label") in ("QUALIFIED", "REVIEW", "NOT_QUALIFIED")]
-    if len(rows) < 10:
-        pytest.skip("etiketli satir yetersiz: real_labeled.jsonl icindeki label alanlarini doldurun")
+    if len(rows) < 15:
+        pytest.skip("yetersiz veri: real_labeled.jsonl icinde en az 15 etiketli satir gerekli")
     engine = module.JobMatchingEngine()
     profile = load_canonical_profile()
     scored = []
