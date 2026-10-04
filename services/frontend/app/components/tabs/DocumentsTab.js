@@ -1,0 +1,69 @@
+"use client";
+
+import { StatusPill, STRINGS } from "../../lib";
+import { SearchBar, Toolbar } from "../controls";
+import { docTypeLabel } from "../shared";
+
+export default function DocumentsTab({ documents, query, onQueryChange, error, loading, refresh }) {
+  // Liste: job+tur basina SON surum; eski surumler yalnizca detay sayfasinda.
+  // Arama backend'de (?q=).
+  const rows = (documents || []).filter((d) => d.is_latest);
+  return (
+    <div className="panel">
+      <Toolbar label={STRINGS.docsToolbar} onRefresh={refresh} count={rows?.length} />
+      <SearchBar value={query} onChange={onQueryChange} />
+      {error && <div className="error-banner">{error}</div>}
+      <table className="responsive">
+        <thead>
+          <tr>
+            <th>{STRINGS.colType}</th>
+            <th>{STRINGS.colJob}</th>
+            <th>{STRINGS.colApplication}</th>
+            <th>{STRINGS.colFile}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((document) => (
+            <tr key={document.id}>
+              <td data-label={STRINGS.colType} className="cell-main">
+                <div className="cell-title">
+                  {docTypeLabel(document.type)}
+                  <span className="lang-badge">{document.language.toUpperCase()}</span>
+                  {document.is_latest && <span className="latest-badge">{STRINGS.latestBadge}</span>}
+                </div>
+              </td>
+              <td data-label={`${STRINGS.colCompany} · ${STRINGS.colJob}`} className="cell-main">
+                <div className="cell-title" title={`${document.company} — ${document.job_title}`}>
+                  {document.company} — {document.job_title}
+                </div>
+              </td>
+              <td data-label={STRINGS.colApplication} className="cell-main">
+                {document.application ? (
+                  <a className="link" href={`/applications/${document.application.id}`}>
+                    <StatusPill status={document.application.status} />
+                  </a>
+                ) : (
+                  <span className="muted">{STRINGS.unlinked}</span>
+                )}
+              </td>
+              <td data-label={STRINGS.colFile} className="document-actions">
+                <a
+                  className="link"
+                  href={document.view_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`${STRINGS.viewFile} • ${document.created_at || ""}`}
+                >
+                  {STRINGS.viewFile}
+                </a>
+              </td>
+            </tr>
+          ))}
+          {rows.length === 0 && (
+            <tr><td colSpan={4} className="muted">{loading ? STRINGS.loading : STRINGS.noDocumentsYet}</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}

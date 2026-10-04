@@ -8,6 +8,8 @@ import json
 import re
 from pathlib import Path
 
+from tests.unit._frontend_src import read_frontend_sources
+
 ROOT = Path(__file__).resolve().parents[2]
 I18N = ROOT / "services" / "frontend" / "i18n"
 PAGE = ROOT / "services" / "frontend" / "app" / "page.js"
@@ -33,7 +35,7 @@ def test_placeholders_match_across_locales():
 
 
 def test_page_uses_strings_module_not_hardcoded_tabs():
-    src = PAGE.read_text(encoding="utf-8")
+    src = read_frontend_sources()
     assert "STRINGS" in src
     assert "const TABS = STRINGS.tabs" in src
     assert "const ACTIONS = STRINGS.actions" in src

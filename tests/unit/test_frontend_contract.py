@@ -12,6 +12,8 @@ Guards the stabilization fixes:
 import re
 from pathlib import Path
 
+from tests.unit._frontend_src import read_frontend_sources
+
 ROOT = Path(__file__).resolve().parents[2]
 PAGE = ROOT / "services" / "frontend" / "app" / "page.js"
 CSS = ROOT / "services" / "frontend" / "app" / "globals.css"
@@ -42,7 +44,7 @@ def _backend_routes() -> set:
 
 
 def test_tables_scroll_inside_panel():
-    src = PAGE.read_text(encoding="utf-8")
+    src = read_frontend_sources()
     assert "table-scroll" not in src, (
         "tables must fit the viewport via responsive columns, not scroll containers"
     )
@@ -70,7 +72,7 @@ def test_scroll_css_rules_exist():
     assert re.search(r"\.tab-body\s*\{[^}]*flex:\s*1", css), (
         ".tab-body must fill the remaining viewport height"
     )
-    assert '<div className="tab-body">' in PAGE.read_text(encoding="utf-8"), (
+    assert '<div className="tab-body">' in read_frontend_sources(), (
         "tab panels must render inside .tab-body"
     )
     assert re.search(r"\.tab\s*\{[^}]*white-space:\s*nowrap", css), ".tab needs white-space:nowrap"
@@ -81,7 +83,7 @@ def test_scroll_css_rules_exist():
 
 def test_action_cells_keep_buttons_visible():
     css = CSS.read_text(encoding="utf-8")
-    src = PAGE.read_text(encoding="utf-8")
+    src = read_frontend_sources()
     assert "application-actions" in src and "document-actions" in src
     assert re.search(r"\.application-actions\s*\{[^}]*flex-wrap:\s*wrap", css), (
         "action buttons must wrap instead of clipping"
@@ -90,7 +92,7 @@ def test_action_cells_keep_buttons_visible():
 
 
 def test_theme_toggle_and_persistence():
-    src = PAGE.read_text(encoding="utf-8")
+    src = read_frontend_sources()
     assert "useTheme" in src and "ai-job-agent-theme" in src
     # Toggle labels come from i18n (Faz 2D), not hardcoded literals.
     assert "STRINGS.themeLight" in src and "STRINGS.themeDark" in src
@@ -112,7 +114,7 @@ def test_dark_theme_variables():
 
 
 def test_tables_show_loading_state():
-    src = PAGE.read_text(encoding="utf-8")
+    src = read_frontend_sources()
     for component in ["JobsTab", "ApplicationsTab", "DocumentsTab", "EventsTab", "OverviewTab"]:
         assert re.search(rf"function {component}\(\{{[^)]*loading", src, re.IGNORECASE), (
             f"{component} must accept a loading prop"
@@ -124,8 +126,8 @@ def test_tables_show_loading_state():
 
 
 def test_frontend_api_paths_exist_in_backend():
-    frontend_paths = set(re.findall(r'"(/api/[^"?]*)', PAGE.read_text(encoding="utf-8")))
-    frontend_paths |= set(re.findall(r"'(/api/[^'?]*)", PAGE.read_text(encoding="utf-8")))
+    frontend_paths = set(re.findall(r'"(/api/[^"?]*)', read_frontend_sources()))
+    frontend_paths |= set(re.findall(r"'(/api/[^'?]*)", read_frontend_sources()))
     backend_routes = _backend_routes()
     # dynamic segments match any concrete value
     patterns = [re.sub(r"\{[^}]+\}", "[^/]+", r) + r"$" for r in backend_routes]
@@ -142,7 +144,7 @@ def test_health_check_rewrite_preserved():
 
 
 def test_documents_use_safe_download_not_raw_paths():
-    src = PAGE.read_text(encoding="utf-8")
+    src = read_frontend_sources()
     detail = (ROOT / "services" / "frontend" / "app" / "applications" / "[id]" / "page.js").read_text(encoding="utf-8")
     for component in (src, detail):
         assert "Artifact Path" not in component, "raw internal paths must not be the primary UI"
@@ -164,7 +166,7 @@ def test_download_endpoint_streams_safely():
 
 
 def test_tab_navigation_is_url_driven():
-    src = PAGE.read_text(encoding="utf-8")
+    src = read_frontend_sources()
     # Single nav source + URL hash as the active-tab source of truth.
     assert re.search(r"const TABS = STRINGS\.tabs", src)
     assert "tabFromHash" in src and "location.hash" in src
@@ -173,7 +175,7 @@ def test_tab_navigation_is_url_driven():
 
 
 def test_polling_discipline_and_filter_persistence():
-    src = PAGE.read_text(encoding="utf-8")
+    src = read_frontend_sources()
     # Polling pauses while the page is hidden and resumes on return.
     assert "visibilitychange" in src
     assert "document.hidden" in src
@@ -191,7 +193,7 @@ def test_gui_action_contract_explicit():
     one implicit onSubmit handler, and per-row actions must come from
     getAvailableActions(application) — never from submittingApplicationId.
     """
-    src = PAGE.read_text(encoding="utf-8")
+    src = read_frontend_sources()
     for action in ("prepare", "submit", "retry", "continue"):
         assert f'onExecute(a, "{action}")' in src, f"missing explicit onExecute call for {action}"
     assert "onClick={() => onSubmit(a)}" not in src, "implicit onSubmit handler must not remain"

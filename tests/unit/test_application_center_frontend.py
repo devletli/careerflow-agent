@@ -8,6 +8,8 @@ import json
 import re
 from pathlib import Path
 
+from tests.unit._frontend_src import read_frontend_sources
+
 ROOT = Path(__file__).resolve().parents[2]
 PAGE = ROOT / "services" / "frontend" / "app" / "page.js"
 DETAIL = ROOT / "services" / "frontend" / "app" / "applications" / "[id]" / "page.js"
@@ -15,14 +17,14 @@ I18N = ROOT / "services" / "frontend" / "i18n"
 
 
 def test_document_file_link_points_to_file_endpoint():
-    src = PAGE.read_text(encoding="utf-8")
+    src = read_frontend_sources()
     assert "/api/v1/documents/${d.id}/file?download=0" in src
     assert 'href={`/applications/${a.id}`}' in src
     assert 'href={`/applications/${document.application.id}`}' in src
 
 
 def test_tables_have_search_and_filters():
-    src = PAGE.read_text(encoding="utf-8")
+    src = read_frontend_sources()
     assert src.count("<SearchBar") >= 3
     assert "distinctStatuses" in src
     assert "showScore" in src
@@ -48,7 +50,7 @@ def test_no_hardcoded_dashboard_strings_in_new_ui():
     en = json.loads((I18N / "en.json").read_text(encoding="utf-8"))
     tr = json.loads((I18N / "tr.json").read_text(encoding="utf-8"))
     assert set(en) == set(tr)
-    page = PAGE.read_text(encoding="utf-8")
+    page = read_frontend_sources()
     detail = DETAIL.read_text(encoding="utf-8")
     for literal in (
         "Search…", "Ara…", "Unlinked", "Bağlantısız", "Details", "Detay",
@@ -62,6 +64,6 @@ def test_no_hardcoded_dashboard_strings_in_new_ui():
 
 
 def test_url_dialog_posts_to_manual_endpoint():
-    src = PAGE.read_text(encoding="utf-8")
+    src = read_frontend_sources()
     assert "/api/v1/applications/manual" in src
     assert "STRINGS.addViaUrl" in src and "STRINGS.urlDialogTitle" in src
