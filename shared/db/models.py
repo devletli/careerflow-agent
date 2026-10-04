@@ -82,8 +82,9 @@ class Job(Base):
     )
 
     __table_args__ = (
+        # NOT: (source, source_job_id) icin ayri non-unique indeks YOK;
+        # unique constraint'in destek indeksi ayni taramalara hizmet eder (007).
         UniqueConstraint("source", "source_job_id", name="uq_jobs_source_source_job_id"),
-        Index("ix_jobs_source_source_job_id", "source", "source_job_id"),
     )
 
 
@@ -173,7 +174,9 @@ class Application(Base):
         UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
     )
     candidate_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    application_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    # NOT: unique=True zaten destek indeksi kurar; ayri index=True
+    # ayni kolonlara cift indeks demekti (007 ile kaldirildi).
+    application_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     status: Mapped[str] = mapped_column(String(64), nullable=False, default="DISCOVERED", index=True)
     automation_mode: Mapped[str] = mapped_column(String(64), nullable=False, default="PREPARE_APPLICATION")
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
