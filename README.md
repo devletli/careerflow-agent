@@ -221,6 +221,10 @@ around the cutoff; near-misses still surface as REVIEW for human check.
 92.8, so almost nothing would qualify). Recalibrate if matcher weights or the
 profile change: re-run the sweep and update this table.
 
+> Uyarı: bu tablo sentetik sette üretildi, gerçek ilanlarla doğrulanmadı;
+> eşiği değiştirmeden önce `make calibrate` çalıştırılmalı (etiketli gerçek
+> ilanlar: `tests/golden/real_labeled.jsonl`, şema: `real_labeled.example.jsonl`).
+
 Hard gates (`shared/matching/gates.py`) apply on top: `Senior DevOps Engineer`
 and `Principal` titles flip `strong-devops` (99.8) and `seniority-principal`
 (96.1) from QUALIFIED to REVIEW because `satisfies.senior` is unconfirmed;

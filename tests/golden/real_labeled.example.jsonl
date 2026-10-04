@@ -1,0 +1,3 @@
+{"id": "ornek-1", "title": "ÖRNEK: Senior Backend Engineer", "description": "ÖRNEK SATIR - gercek ilan degil. Python, FastAPI, PostgreSQL. Berlin onsite.", "requirements": ["Python", "FastAPI"], "location": "Berlin", "remote_status": "onsite", "label": "QUALIFIED"}
+{"id": "ornek-2", "title": "ÖRNEK: Junior QA", "description": "ÖRNEK SATIR - gercek ilan degil. Manuel test, Jira. Remote.", "requirements": ["Jira"], "location": "Remote", "remote_status": "remote", "label": "NOT_QUALIFIED"}
+{"id": "ornek-3", "title": "ÖRNEK: DevOps Engineer", "description": "ÖRNEK SATIR - gercek ilan degil. Kubernetes, Terraform, Almanca B2 sarti. Munich hybrid.", "requirements": ["Kubernetes"], "location": "Munich", "remote_status": "hybrid", "label": "REVIEW"}

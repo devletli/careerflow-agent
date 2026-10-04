@@ -16,6 +16,9 @@ test:
 smoke:
 	python scripts/smoke.py
 
+calibrate:
+	python scripts/calibrate.py
+
 lint:
 	python -m ruff check .
 	python -m mypy shared/ services/api/app/
