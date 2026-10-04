@@ -15,7 +15,9 @@ from fastapi.responses import JSONResponse
 from app.deps import minio_client, redis_bus
 from app.errors import DomainError, domain_error_handler, unhandled_handler
 from app.routers import (
-    applications,
+    applications_actions,
+    applications_core,
+    applications_documents,
     confirmations,
     documents,
     events,
@@ -97,5 +99,5 @@ async def health() -> JSONResponse:
     )
 
 
-for _router in (status, jobs, applications, documents, events, pipeline, confirmations):
+for _router in (status, jobs, applications_core, applications_actions, applications_documents, documents, events, pipeline, confirmations):
     app.include_router(_router.router)

@@ -1,7 +1,9 @@
 """API routers (Gorev 3). Each router carries its own API-key dependency;
 only /health (defined in main.py) stays unprotected."""
 from app.routers import (
-    applications,
+    applications_actions,
+    applications_core,
+    applications_documents,
     confirmations,
     documents,
     events,
@@ -11,7 +13,9 @@ from app.routers import (
 )
 
 __all__ = [
-    "applications",
+    "applications_actions",
+    "applications_core",
+    "applications_documents",
     "confirmations",
     "documents",
     "events",

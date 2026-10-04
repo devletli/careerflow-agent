@@ -199,7 +199,10 @@ def test_gui_action_contract_explicit():
     assert "onClick={() => onSubmit(a)}" not in src, "implicit onSubmit handler must not remain"
     assert "function getAvailableActions(application)" in src
     assert "submittingApplicationId" not in src, "row actions must not depend on submittingApplicationId"
-    api = (API_ROUTERS / "applications.py").read_text(encoding="utf-8")
+    api = "\n".join(
+        (API_ROUTERS / name).read_text(encoding="utf-8")
+        for name in ("applications_core.py", "applications_actions.py", "applications_documents.py")
+    )
     assert "/{application_id}/execute" in api
     assert _backend_routes() >= {"/api/v1/applications/{application_id}/execute"}
     assert "prepare" in api and "retry" in api and "continue" in api
