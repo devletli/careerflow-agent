@@ -52,10 +52,14 @@ class LLMClient:
     ):
         self.provider = (provider or settings.LLM_PROVIDER).lower()
         self.model = model or settings.LLM_MODEL
+
+        def _secret(value):
+            return value.get_secret_value() if value is not None else None
+
         provider_keys = {
-            "gemini": settings.GEMINI_API_KEY,
-            "anthropic": settings.ANTHROPIC_API_KEY,
-            "openai": settings.OPENAI_API_KEY,
+            "gemini": _secret(settings.GEMINI_API_KEY),
+            "anthropic": _secret(settings.ANTHROPIC_API_KEY),
+            "openai": _secret(settings.OPENAI_API_KEY),
         }
         self.api_key = api_key or provider_keys.get(self.provider)
 

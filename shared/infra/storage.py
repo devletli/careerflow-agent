@@ -19,8 +19,8 @@ class MinIOClient:
         secure: Optional[bool] = None,
     ):
         self.endpoint = endpoint or settings.MINIO_ENDPOINT
-        self.access_key = access_key or settings.MINIO_ACCESS_KEY
-        self.secret_key = secret_key or settings.MINIO_SECRET_KEY
+        self.access_key = access_key or settings.MINIO_ACCESS_KEY.get_secret_value()
+        self.secret_key = secret_key or settings.MINIO_SECRET_KEY.get_secret_value()
         self.secure = secure if secure is not None else settings.MINIO_SECURE
 
         self.client = Minio(

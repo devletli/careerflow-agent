@@ -37,8 +37,9 @@ UUID0 = "00000000-0000-0000-0000-000000000000"
 @pytest.fixture()
 def client():
     from fastapi.testclient import TestClient
+    from pydantic import SecretStr
 
-    settings.API_KEY = "test-key-12345678901234567890"
+    settings.API_KEY = SecretStr("test-key-12345678901234567890")
     with TestClient(_api.app) as c:
         yield c
 

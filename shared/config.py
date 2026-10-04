@@ -1,12 +1,20 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import model_validator
+from pydantic import SecretStr, model_validator
 from typing import Optional
 import logging
 
 log = logging.getLogger("settings")
 
 
-WEAK_SECRETS = {"change_me", "minioadmin", ""}
+WEAK_SECRETS = {"change_me", "changeme", "password", "minioadmin", "admin", "secret", "test", ""}
+# Bos birakilirsa HER ortamda startup hatasi (sadece prod degil).
+REQUIRED_SECRETS = ("POSTGRES_PASSWORD", "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY", "API_KEY")
+
+
+def _raw_secret(value) -> str:
+    if isinstance(value, SecretStr):
+        return value.get_secret_value() or ""
+    return value or ""
 
 
 class Settings(BaseSettings):
@@ -19,7 +27,7 @@ class Settings(BaseSettings):
     # Database
     POSTGRES_DB: str = "jobagent"
     POSTGRES_USER: str = "jobagent"
-    POSTGRES_PASSWORD: str = "change_me"
+    POSTGRES_PASSWORD: SecretStr  # zorunlu; bos olamaz
     DATABASE_URL: str = "postgresql+asyncpg://jobagent:change_me@postgres:5432/jobagent"
 
     # Redis
@@ -29,15 +37,15 @@ class Settings(BaseSettings):
 
     # MinIO
     MINIO_ENDPOINT: str = "minio:9000"
-    MINIO_ACCESS_KEY: str = "minioadmin"
-    MINIO_SECRET_KEY: str = "minioadmin"
+    MINIO_ACCESS_KEY: SecretStr  # zorunlu; bos olamaz
+    MINIO_SECRET_KEY: SecretStr  # zorunlu; bos olamaz
     MINIO_BUCKET: str = "job-agent-private"
     MINIO_SECURE: bool = False
 
     # API / Frontend
     API_PORT: int = 8000
     FRONTEND_PORT: int = 3000
-    API_KEY: str = ""
+    API_KEY: SecretStr  # zorunlu; bos olamaz
     CORS_ORIGINS: str = "http://localhost:3000"
     ENV: str = "dev"  # dev | prod
 
@@ -60,9 +68,9 @@ class Settings(BaseSettings):
     # Bos birakilirsa model acilista dogrulanamaz; LLM aciklamasi kapali kalir,
     # skor deterministik devam eder (bkz. shared.llm.models.resolve_model).
     LLM_MODEL: str = ""
-    GEMINI_API_KEY: Optional[str] = None
-    OPENAI_API_KEY: Optional[str] = None
-    ANTHROPIC_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[SecretStr] = None
+    OPENAI_API_KEY: Optional[SecretStr] = None
+    ANTHROPIC_API_KEY: Optional[SecretStr] = None
 
     # Discovery connector bayraklari (job-discovery acilista aktif olanlari loglar).
     WORKABLE_ENABLED: bool = True
@@ -97,12 +105,14 @@ class Settings(BaseSettings):
             raise ValueError("hourly limit cannot exceed daily limit")
         if self.LOG_FORMAT not in {"text", "json"}:
             raise ValueError("LOG_FORMAT must be text or json")
+        for name in REQUIRED_SECRETS:
+            if not _raw_secret(getattr(self, name, None)):
+                raise ValueError(f"{name} bos olamaz (.env doldurulmali)")
         if self.ENV == "prod":
-            if (self.POSTGRES_PASSWORD or "").lower() in WEAK_SECRETS:
-                raise ValueError("weak default secrets are not allowed in prod")
-            if (self.MINIO_SECRET_KEY or "").lower() in WEAK_SECRETS:
-                raise ValueError("weak default secrets are not allowed in prod")
-            if len(self.API_KEY or "") < 24:
+            for name in REQUIRED_SECRETS:
+                if _raw_secret(getattr(self, name, None)).lower() in WEAK_SECRETS:
+                    raise ValueError(f"{name} zayif/varsayilan deger")
+            if len(_raw_secret(self.API_KEY)) < 24:
                 raise ValueError("API_KEY must be >= 24 chars in prod")
         return self
 

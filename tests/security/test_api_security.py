@@ -52,10 +52,11 @@ def test_api_key_rejects_wrong_key():
     try:
         from app.security import require_api_key
         from fastapi import HTTPException
+        from pydantic import SecretStr
 
         from shared.config import settings
 
-        settings.API_KEY = "test-key-12345678901234567890"
+        settings.API_KEY = SecretStr("test-key-12345678901234567890")
         try:
             asyncio.run(require_api_key("wrong"))
             raise AssertionError("wrong key must raise")

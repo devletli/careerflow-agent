@@ -54,13 +54,16 @@ async def validate_llm_at_startup() -> dict[str, Any]:
     try:
         provider = (settings.LLM_PROVIDER or "gemini").lower()
         wanted = settings.LLM_MODEL or ""
+        gemini_key = (
+            settings.GEMINI_API_KEY.get_secret_value() if settings.GEMINI_API_KEY else None
+        )
         if provider != "gemini":
             _llm_status = {
                 "state": "disabled",
                 "reason": f"provider '{provider}' icin acilis dogrulamasi yok",
                 "model": None,
             }
-        elif not settings.GEMINI_API_KEY:
+        elif not gemini_key:
             _llm_status = {
                 "state": "disabled",
                 "reason": "GEMINI_API_KEY yok; LLM aciklamasi kapali",
@@ -82,7 +85,7 @@ async def validate_llm_at_startup() -> dict[str, Any]:
                     "model": None,
                 }
             else:
-                client = genai.Client(api_key=settings.GEMINI_API_KEY)
+                client = genai.Client(api_key=gemini_key)
                 model = await asyncio.to_thread(resolve_model, client, wanted)
                 if model is None:
                     _llm_status = {

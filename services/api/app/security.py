@@ -12,7 +12,8 @@ from shared.config import settings
 
 
 async def require_api_key(x_api_key: str = Header(default="")) -> None:
-    if not settings.API_KEY or not hmac.compare_digest(x_api_key, settings.API_KEY):
+    expected = settings.API_KEY.get_secret_value()
+    if not expected or not hmac.compare_digest(x_api_key, expected):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid api key")
 
 
