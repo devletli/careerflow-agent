@@ -60,7 +60,7 @@ The current architecture is retained for now. For a single-user deployment, futu
 
 ## Roadmap
 
-Completed: Phases 0–8, Phase 9 submission adapters for Greenhouse/Lever, and the Phase 10 reliability baseline above (including T4 security tests, T5 stream recovery, and T7 CI/backup/i18n/golden-set/JSON logging). Follow-up hardening (`yama.md` Faz 1–6): single settings validation with secret enforcement, per-connector enable flags, LLM model startup validation with dashboard indicator, backend-driven dashboard search/filters, single-use server-side confirmation tokens for browser actions, `idempotency_key` audit column, missing query indexes (revisions 004–005), dead `site_adapters` table removal (006), `MIN_MATCH_SCORE=90` golden-set calibration, and `make test/smoke/lint` targets.
+Completed: Phases 0–8, Phase 9 submission adapters for Greenhouse/Lever, and the Phase 10 reliability baseline above (including T4 security tests, T5 stream recovery, and T7 CI/backup/i18n/golden-set/JSON logging). Follow-up hardening (`docs/archive/yama.md` Faz 1–6): single settings validation with secret enforcement, per-connector enable flags, LLM model startup validation with dashboard indicator, backend-driven dashboard search/filters, single-use server-side confirmation tokens for browser actions, `idempotency_key` audit column, missing query indexes (revisions 004–005), dead `site_adapters` table removal (006), `MIN_MATCH_SCORE=90` golden-set calibration, and `make test/smoke/lint` targets.
 
 Current: manual pipeline operation via the dashboard; German-market discovery adapters (Bundesagentur, Arbeitnow) in regular use.
 
