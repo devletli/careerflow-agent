@@ -80,6 +80,14 @@ class CanonicalProfile:
     def skills(self) -> List[str]:
         return cast(List[str], self.facts.get("skills", []))
 
+    @property
+    def satisfies(self) -> Dict[str, bool]:
+        """B1 kapilari icin acik onaylar (yoksa/hepsi False)."""
+        raw = self.preferences.get("satisfies", {}) or {}
+        if not isinstance(raw, dict):
+            return {}
+        return {str(k): bool(v) for k, v in raw.items()}
+
     def has_verified_skill(self, skill: str) -> bool:
         """Returns True only if skill is a verified candidate fact."""
         return skill.lower().strip() in self._skills_set

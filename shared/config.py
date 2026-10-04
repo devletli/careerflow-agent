@@ -27,7 +27,9 @@ class Settings(BaseSettings):
     # Database
     POSTGRES_DB: str = "jobagent"
     POSTGRES_USER: str = "jobagent"
-    POSTGRES_PASSWORD: SecretStr  # zorunlu; bos olamaz
+    # Varsayilan BOS SecretStr: mypy icin default vardir, calisma aninda
+    # validator bos degeri HER ortamda reddeder (fail-fast).
+    POSTGRES_PASSWORD: SecretStr = SecretStr("")
     DATABASE_URL: str = "postgresql+asyncpg://jobagent:change_me@postgres:5432/jobagent"
 
     # Redis
@@ -37,15 +39,15 @@ class Settings(BaseSettings):
 
     # MinIO
     MINIO_ENDPOINT: str = "minio:9000"
-    MINIO_ACCESS_KEY: SecretStr  # zorunlu; bos olamaz
-    MINIO_SECRET_KEY: SecretStr  # zorunlu; bos olamaz
+    MINIO_ACCESS_KEY: SecretStr = SecretStr("")  # zorunlu; bos olamaz
+    MINIO_SECRET_KEY: SecretStr = SecretStr("")  # zorunlu; bos olamaz
     MINIO_BUCKET: str = "job-agent-private"
     MINIO_SECURE: bool = False
 
     # API / Frontend
     API_PORT: int = 8000
     FRONTEND_PORT: int = 3000
-    API_KEY: SecretStr  # zorunlu; bos olamaz
+    API_KEY: SecretStr = SecretStr("")  # zorunlu; bos olamaz
     CORS_ORIGINS: str = "http://localhost:3000"
     ENV: str = "dev"  # dev | prod
 

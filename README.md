@@ -221,6 +221,12 @@ around the cutoff; near-misses still surface as REVIEW for human check.
 92.8, so almost nothing would qualify). Recalibrate if matcher weights or the
 profile change: re-run the sweep and update this table.
 
+Hard gates (`shared/matching/gates.py`) apply on top: `Senior DevOps Engineer`
+and `Principal` titles flip `strong-devops` (99.8) and `seniority-principal`
+(96.1) from QUALIFIED to REVIEW because `satisfies.senior` is unconfirmed;
+their golden/eval expectations were updated openly to REVIEW (no hidden
+changes). The table above already reflects gate behavior (25/25 at T=90).
+
 ## Remaining Risks / Known Limitations
 
 - `tests/fixtures/forms/` covers Greenhouse/Lever/Workable form parsing, safe-answer resolution, blocker hard-stop, and fill-without-submit locally; live browser-agent runs still exercise real public job boards in `PREPARE_APPLICATION` mode (fill-only, never submits).

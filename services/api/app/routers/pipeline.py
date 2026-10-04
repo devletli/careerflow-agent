@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status as http_status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import confirmations
+from app.confirmations import consume_confirmation_token
 from app.deps import logger, redis_bus
 from app.security import require_api_key
 from shared.contracts.events import BaseEvent
@@ -56,7 +56,7 @@ async def run_pipeline_action(
             detail="Explicit confirmation is required before this browser action.",
         )
     # Faz 3B: UI onay bayragi yetmez; tek kullanimlik sunucu tokeni sart (B2: Redis GETDEL).
-    if request.action in CONFIRMATION_REQUIRED_ACTIONS and not await confirmations.consume_confirmation_token(
+    if request.action in CONFIRMATION_REQUIRED_ACTIONS and not await consume_confirmation_token(
         await redis_bus.get_redis(),
         request.confirmation_token,
         request.action,

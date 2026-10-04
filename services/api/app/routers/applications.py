@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import confirmations
+from app.confirmations import consume_confirmation_token
 from app.deps import redis_bus
 from app.security import require_api_key
 from shared.config import settings
@@ -122,7 +122,7 @@ async def execute_application_action(
                 detail=f"Submit is only valid from READY_TO_SUBMIT (current: {status}).",
             )
         # Faz 3B: UI onayina guvenme; tek kullanimlik sunucu tokeni sart (B2: Redis GETDEL).
-        if not await confirmations.consume_confirmation_token(
+        if not await consume_confirmation_token(
             await redis_bus.get_redis(), request.confirmation_token, "submit", str(application_id)
         ):
             raise HTTPException(

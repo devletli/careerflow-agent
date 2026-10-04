@@ -11,7 +11,7 @@
       "requirements": ["5+ years experience with Kubernetes", "Must have: Terraform", "AWS required"],
       "location": "Berlin",
       "remote_status": "onsite",
-      "expected": {"min_score": 95.0, "max_score": 100.0, "qualifications": ["QUALIFIED"]}
+      "expected": {"min_score": 95.0, "max_score": 100.0, "qualifications": ["REVIEW"]}
     },
     {
       "id": "strong-ai",
@@ -156,7 +156,7 @@
       "requirements": ["12+ years experience required"],
       "location": "Berlin",
       "remote_status": "onsite",
-      "expected": {"min_score": 92.0, "max_score": 99.0, "qualifications": ["QUALIFIED"]}
+      "expected": {"min_score": 92.0, "max_score": 99.0, "qualifications": ["REVIEW"]}
     },
     {
       "id": "lang-support",

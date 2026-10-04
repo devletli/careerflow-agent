@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from shared.contracts.models import JobMatchResult, QualificationStatus
+from shared.matching.gates import apply_gates, evaluate_gates
 from shared.profile.loader import CanonicalProfile
 from shared.llm.client import LLMClient, build_prompt, sanitize_untrusted_input
 
@@ -123,6 +124,23 @@ class JobMatchingEngine:
             else (QualificationStatus.REVIEW if overall_score >= min_threshold - 10 else QualificationStatus.NOT_QUALIFIED)
         )
 
+        # B1: sert kapilar — skor yuksek olsa bile onaylanmamis iddia
+        # QUALIFIED'i REVIEW'a dusurur (asla reddetmez).
+        gate_hits = evaluate_gates(
+            f"{description}\n{' '.join(requirements)}",
+            title,
+            profile.satisfies,
+        )
+        if gate_hits and apply_gates(qualification.value, gate_hits) != qualification.value:
+            logger.info(
+                "Gate downgrade job_id=%s score=%s gates=%s",
+                job_id,
+                overall_score,
+                ",".join(gate_hits),
+            )
+            qualification = QualificationStatus.REVIEW
+        gate_risks = [f"gate:{name}" for name in gate_hits]
+
         explanation = self._build_explanation(
             overall_score=overall_score,
             matching_skills=matching_skills,
@@ -131,6 +149,11 @@ class JobMatchingEngine:
             hard_reqs=hard_reqs,
             confidence=confidence,
         )
+        if gate_hits:
+            explanation = (
+                f"{explanation} Gate review ({', '.join(gate_hits)}): "
+                "profil onayi eksik, insan kontrolu gerekli."
+            )
 
         return JobMatchResult(
             job_id=job_id,
@@ -141,7 +164,7 @@ class JobMatchingEngine:
             hard_requirements=hard_reqs,
             matching_skills=matching_skills,
             missing_skills=missing_skills,
-            risks=[],
+            risks=gate_risks,
             explanation=explanation,
         )
 
@@ -190,7 +213,8 @@ class JobMatchingEngine:
         )
         if narrative.explanation:
             result.explanation = narrative.explanation
-        result.risks = narrative.risks
+        gate_prior = [r for r in (result.risks or []) if r.startswith("gate:")]
+        result.risks = gate_prior + narrative.risks
         return result
 
     def _match_skills(

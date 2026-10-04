@@ -29,3 +29,10 @@ employment_types:
 cv_languages:
   - German
   - English
+
+# B1 kapilari icin acik onaylar: true ise ilgili kapi ateslenmez.
+# Bilinmeyen/eksik anahtar False sayilir (supheli ilan REVIEW'a duser).
+satisfies:
+  german_c1: false
+  senior: false
+  clearance: false

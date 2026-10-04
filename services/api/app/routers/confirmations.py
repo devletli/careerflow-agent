@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status as http_status
 from pydantic import BaseModel
 
-from app import confirmations
+from app.confirmations import mint_confirmation_token
 from app.deps import redis_bus
 from app.security import require_api_key
 
@@ -34,7 +34,7 @@ async def create_confirmation(request: ConfirmationRequest) -> dict[str, Any]:
             detail="An application_id is required to confirm a submission.",
         )
     try:
-        token, ttl = await confirmations.mint_confirmation_token(
+        token, ttl = await mint_confirmation_token(
             await redis_bus.get_redis(),
             request.action,
             str(request.application_id) if request.application_id else None,
