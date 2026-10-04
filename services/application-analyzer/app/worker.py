@@ -22,6 +22,7 @@ from shared.db.models import (
 )
 from shared.db.session import get_session, check_db_health
 from shared.infra.redis_bus import RedisEventBus
+from shared.infra.heartbeat import beat
 from shared.infra.jsonlog import correlation
 from shared.profile.loader import load_canonical_profile
 from app.analyzer import FormAnalyzer

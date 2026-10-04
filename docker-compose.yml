@@ -56,7 +56,6 @@ services:
 
   init-db:
     build: *orch_build
-    image: careerflow/orchestrator:local
     env_file: .env
     environment:
       DATABASE_URL: *db_url
@@ -97,7 +96,6 @@ services:
 
   orchestrator:
     build: *orch_build
-    image: careerflow/orchestrator:local
     restart: unless-stopped
     stop_grace_period: 30s
     mem_limit: 512m
