@@ -1,5 +1,11 @@
 x-db-url: &db_url postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB}
 
+# Gorev 7A: init-db ve orchestrator AYNI image'i paylasir (migration kayma
+# riski); tag sabit tutulur ki `up --build` ikisini birlikte yenilesin.
+x-orch-build: &orch_build
+  context: .
+  dockerfile: services/orchestrator/Dockerfile
+
 services:
 
   postgres:
@@ -49,9 +55,8 @@ services:
       retries: 5
 
   init-db:
-    build:
-      context: .
-      dockerfile: services/orchestrator/Dockerfile
+    build: *orch_build
+    image: careerflow/orchestrator:local
     env_file: .env
     environment:
       DATABASE_URL: *db_url
@@ -91,12 +96,17 @@ services:
       - ./artifacts:/app/artifacts
 
   orchestrator:
-    build:
-      context: .
-      dockerfile: services/orchestrator/Dockerfile
+    build: *orch_build
+    image: careerflow/orchestrator:local
     restart: unless-stopped
     stop_grace_period: 30s
     mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "python", "/app/scripts/healthcheck_worker.py", "orchestrator"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
     env_file: .env
     environment:
       DATABASE_URL: *db_url
@@ -115,6 +125,12 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
     mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "python", "/app/scripts/healthcheck_worker.py", "job-discovery"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
     env_file: .env
     environment:
       DATABASE_URL: *db_url
@@ -133,6 +149,12 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
     mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "python", "/app/scripts/healthcheck_worker.py", "job-matching"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
     env_file: .env
     environment:
       DATABASE_URL: *db_url
@@ -151,6 +173,12 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
     mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "python", "/app/scripts/healthcheck_worker.py", "cv-generator"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
     env_file: .env
     environment:
       DATABASE_URL: *db_url
@@ -174,6 +202,12 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
     mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "python", "/app/scripts/healthcheck_worker.py", "application-analyzer"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
     env_file: .env
     environment:
       DATABASE_URL: *db_url
@@ -192,6 +226,12 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
     mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "python", "/app/scripts/healthcheck_worker.py", "browser-agent"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
     env_file: .env
     environment:
       DATABASE_URL: *db_url

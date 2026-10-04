@@ -11,6 +11,7 @@ from shared.contracts.models import PipelineStatus
 from shared.db.models import Application, Job, JobMatch, Document
 from shared.db.session import get_session, check_db_health
 from shared.infra.redis_bus import RedisEventBus
+from shared.infra.heartbeat import beat
 from shared.infra.jsonlog import correlation
 from shared.profile.loader import load_canonical_profile
 from app.generator import DocumentGenerator
@@ -171,6 +172,8 @@ class CVGeneratorWorker:
 
         while self.running:
             try:
+                # Gorev 7: her turda heartbeat (mesaj olsun olmasin).
+                await beat(await self.bus.get_redis(), "cv-generator")
                 # T5: reprocess idle pending messages left by crashed workers.
                 reclaimed = await self.bus.reclaim_events(
                     stream=settings.STREAM_EVENTS,

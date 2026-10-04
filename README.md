@@ -222,4 +222,3 @@ profile change: re-run the sweep and update this table.
 - Matching is keyword-taxonomy based: mandatory requirements outside the taxonomy, non-German/English language requirements, and junior titles are only weakly penalized (pinned by `evals/matching_cases.json` notes and `tests/golden/jobs.jsonl`).
 - `scripts/backup.sh`/`restore.sh` cover PostgreSQL dumps and MinIO bucket mirrors on a single host; point-in-time recovery and off-host copies remain manual.
 - JSON logging is opt-in (`LOG_FORMAT=json`); the default text format carries no structured correlation ids.
-- Migration skew: `init-db` runs migrations from its image, so after adding a migration every image using the orchestrator Dockerfile (`orchestrator`, `init-db`) must be rebuilt before `up`, otherwise the old `init-db` fails with "Can't locate revision" and blocks dependents.

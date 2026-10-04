@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -e ./shared
 COPY db/alembic.ini ./alembic.ini
 COPY db/migrations ./migrations
 
+COPY scripts/healthcheck_worker.py ./scripts/healthcheck_worker.py
 COPY services/orchestrator/app ./app
 ENV PYTHONPATH=/app
 

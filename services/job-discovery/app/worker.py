@@ -11,6 +11,7 @@ from shared.contracts.models import PipelineStatus
 from shared.db.models import Job
 from shared.db.session import get_session, check_db_health
 from shared.infra.redis_bus import RedisEventBus
+from shared.infra.heartbeat import beat
 from shared.infra.jsonlog import correlation
 from shared.profile.loader import load_canonical_profile
 from browser.site_adapters.discovery import (
@@ -181,6 +182,8 @@ class JobDiscoveryWorker:
 
         next_scheduled_run = time.monotonic() + interval_seconds
         while self.running:
+            # Gorev 7: her turda heartbeat (mesaj olsun olmasin).
+            await beat(await self.bus.get_redis(), "job-discovery")
             wait_ms = max(
                 1,
                 min(int((next_scheduled_run - time.monotonic()) * 1000), 10_000),

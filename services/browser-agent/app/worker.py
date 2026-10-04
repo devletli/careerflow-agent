@@ -11,6 +11,7 @@ from shared.contracts.models import PipelineStatus
 from shared.db.models import Application
 from shared.db.session import check_db_health, get_session
 from shared.infra.redis_bus import RedisEventBus
+from shared.infra.heartbeat import beat
 from shared.infra.jsonlog import correlation
 from shared.profile.loader import load_canonical_profile
 
@@ -74,6 +75,8 @@ class BrowserAgentWorker:
 
         while self.running:
             try:
+                # Gorev 7: her turda heartbeat (mesaj olsun olmasin).
+                await beat(await self.bus.get_redis(), "browser-agent")
                 # T5: crashed-worker pending messages first (replay is idempotent).
                 reclaimed = await self.bus.reclaim_events(settings.STREAM_EVENTS, CONSUMER_GROUP, CONSUMER_NAME)
                 events = reclaimed + await self.bus.read_events(

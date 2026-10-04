@@ -7,6 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY shared ./shared
 RUN pip install --no-cache-dir -e ./shared
 
+COPY scripts/healthcheck_worker.py ./scripts/healthcheck_worker.py
 COPY services/application-analyzer/app ./app
 COPY profile ./profile
 

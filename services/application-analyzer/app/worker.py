@@ -196,6 +196,8 @@ class ApplicationAnalyzerWorker:
 
         while self.running:
             try:
+                # Gorev 7: her turda heartbeat (mesaj olsun olmasin).
+                await beat(await self.bus.get_redis(), "application-analyzer")
                 # T5: reprocess idle pending messages left by crashed workers.
                 reclaimed = await self.bus.reclaim_events(
                     stream=settings.STREAM_EVENTS,

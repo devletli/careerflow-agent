@@ -8,6 +8,7 @@ COPY shared ./shared
 RUN pip install --no-cache-dir -e ./shared
 
 COPY browser ./browser
+COPY scripts/healthcheck_worker.py ./scripts/healthcheck_worker.py
 COPY services/job-discovery/app ./app
 COPY profile ./profile
 

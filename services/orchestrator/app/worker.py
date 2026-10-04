@@ -24,6 +24,7 @@ from shared.db.models import (
 )
 from shared.db.session import get_session, check_db_health
 from shared.infra.jsonlog import correlation, install_json_logging
+from shared.infra.heartbeat import beat
 from shared.infra.redis_bus import RedisEventBus, calculate_backoff
 from .state_machine import can_advance_mode
 from .duplicate_detector import (
@@ -65,6 +66,8 @@ class OrchestratorWorker:
 
         while self.running:
             try:
+                # Gorev 7: her turda heartbeat (mesaj olsun olmasin).
+                await beat(await self.bus.get_redis(), "orchestrator")
                 # T5: reprocess idle pending messages left by crashed workers.
                 reclaimed = await self.bus.reclaim_events(
                     stream=settings.STREAM_EVENTS,
