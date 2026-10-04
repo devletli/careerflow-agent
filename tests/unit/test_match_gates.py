@@ -35,3 +35,9 @@ def test_senior_in_title_triggers():
 def test_clearance_word_boundary():
     assert evaluate_gates("Heute Menü2 in der Kantine", "Dev", {}) == []
     assert evaluate_gates("Sicherheitsüberprüfung erforderlich", "Dev", {}) == ["security_clearance"]
+
+
+def test_clearance_muller2_no_match():
+    # "Müller2" sözcük içi "ü2" içerir; \bü[23]\b sınırına takılmamalı
+    assert evaluate_gates("Müller2 Kantine", "Dev", {}) == []
+    assert evaluate_gates("Freigabe Ü2 erforderlich", "Dev", {}) == ["security_clearance"]

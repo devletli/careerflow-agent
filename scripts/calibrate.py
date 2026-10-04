@@ -45,7 +45,10 @@ def main(path="tests/golden/real_labeled.jsonl"):
             "(sema: tests/golden/real_labeled.example.jsonl)"
         )
         return 2
-    rows = [r for r in load(path) if r.get("label") in ("QUALIFIED", "REVIEW", "NOT_QUALIFIED")]
+    rows_all = load(path)
+    rows = [r for r in rows_all if r.get("label") in ("QUALIFIED", "REVIEW", "NOT_QUALIFIED")]
+    skipped = len(rows_all) - len(rows)
+    print(f"atlanan etiketsiz satir: {skipped} / toplam {len(rows_all)}")  # noqa: T201 - CLI
     if len(rows) < 15:
         print(  # noqa: T201 - CLI
             f"yetersiz veri ({len(rows)} etiketli, en az 15 gerekli): once real_labeled.jsonl "
@@ -59,7 +62,8 @@ def main(path="tests/golden/real_labeled.jsonl"):
             f"profil yuklenemedi (profile/profile.yaml + preferences.yaml gerekli): {exc}"
         )
         return 2
-    print(f"profil: satisfies={profile.satisfies}")  # noqa: T201 - CLI
+    print("profil: profile/profile.yaml (gercek profil) kullaniliyor; "  # noqa: T201 - CLI
+          f"satisfies={profile.satisfies} yuklendi")
     engine = _load_matcher().JobMatchingEngine()
     scored = []
     for row in rows:

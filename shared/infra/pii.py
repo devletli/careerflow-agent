@@ -16,6 +16,16 @@ EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 # Digit runs with phone-like separators; the digit-count guard (9-15) plus
 # the exclusions below keep timestamps, dates, IPs, ports, and versions untouched.
 PHONE_RE = re.compile(r"\+?[\d][\d\s().-]*\d")
+# Sokak adresi (iki sira da): "Musterstraße 12", "Atatürk Caddesi No: 5".
+# Sokak anahtari + bitisik kapi numarasi sart; tarihler/IP'ler/suruMLER
+# degmez ("5 years experience", "port 5432" eslesmez).
+ADDRESS_RE = re.compile(
+    r"[A-Za-zÇĞİÖŞÜçğıöşü.()-]*?"
+    r"(Sokak|Sk\.|Caddesi|Cadde|Mahallesi|Mah\.|Street|Straße|Strasse|Str\.|Avenue|Ave\.|Bulvarı|Bulvar)"
+    r"(?=\s|\d|$|,)"
+    r"\s*(?:No\.?:?|Nr\.?)?\s*\d{1,4}[a-z]?",
+    re.IGNORECASE,
+)
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _DATE_TOKEN = "\ue000DATE\ue001"
 
@@ -68,8 +78,9 @@ def reset_names_cache() -> None:
 
 
 def redact(text: str, profile_path: Optional[str] = None) -> str:
-    """Returns text with e-mail, phone, and candidate-name values masked."""
+    """Returns text with e-mail, phone, address, and candidate-name values masked."""
     redacted = EMAIL_RE.sub(MASK, text)
+    redacted = ADDRESS_RE.sub(MASK, redacted)
     dates: list[str] = []
     redacted = _protect_dates(redacted, dates)
     redacted = PHONE_RE.sub(_mask_phone, redacted)

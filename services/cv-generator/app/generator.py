@@ -24,6 +24,20 @@ from shared.profile.loader import CanonicalProfile
 logger = logging.getLogger(__name__)
 ARTIFACT_DIRECTORY = Path("/app/artifacts")
 
+# Dürüst rol ifadesi: ai_assisted projeler "tamamen elle yazdım" diye
+# anlatılmaz; mimari sahiplenilir, AI destegi acikca belirtilir.
+_PROJECT_ROLE_PHRASE = {
+    "owner": {"en": "Personal project", "de": "Eigenes Projekt"},
+    "ai_assisted": {
+        "en": "Architecture designed and built with AI-assisted development",
+        "de": "Architektur entworfen und mit AI-gestützter Entwicklung umgesetzt",
+    },
+}
+_COVER_AI_SENTENCE = {
+    "en": "I designed the architecture of a selected project and built it with AI-assisted development.",
+    "de": "Bei einem ausgewählten Projekt habe ich die Architektur entworfen und mit AI-gestützter Entwicklung umgesetzt.",
+}
+
 
 def detect_job_language(text: str) -> str:
     """Detect whether a job advert is primarily German or English."""
@@ -61,6 +75,9 @@ class DocumentGenerator:
         """
         language = detect_job_language(f"{title} {description}")
         tailoring = self._build_tailoring(title, description, matching_skills, profile)
+        projects = [p for p in (profile.facts.get("projects") or []) if isinstance(p, dict)]
+        project_lines = [self._project_line(p, language) for p in projects]
+        ai_assisted = any(p.get("role") == "ai_assisted" for p in projects)
         candidate_slug = filename_slug(profile.name)
         company_slug = filename_slug(company)
         role_slug = filename_slug(title)
@@ -73,31 +90,34 @@ class DocumentGenerator:
                 1,
                 f"{filename_prefix}_CV_{language}.pdf",
                 "application/pdf",
-                self._build_pdf_cv(profile, company, title, language, tailoring),
+                self._build_pdf_cv(profile, company, title, language, tailoring, project_lines),
             ),
             (
                 "cv",
                 2,
                 f"{filename_prefix}_CV_{language}.docx",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                self._build_docx_cv(profile, company, title, language, tailoring),
+                self._build_docx_cv(profile, company, title, language, tailoring, project_lines),
             ),
             (
                 "cover_letter",
                 1,
                 f"{filename_prefix}_Cover_Letter_{language}.pdf",
                 "application/pdf",
-                self._build_pdf_cover_letter(profile, company, title, language, tailoring),
+                self._build_pdf_cover_letter(profile, company, title, language, tailoring, ai_assisted),
             ),
         ]
 
         documents = []
         violations: List[Violation] = []
         allow = [company, title, date.today().strftime("%B %d, %Y"), date.today().strftime("%d.%m.%Y")]
+        allow.extend(project_lines)
+        if ai_assisted:
+            allow.extend(_COVER_AI_SENTENCE.values())
         for document_type, version, filename, mime_type, content in artifacts:
             text = self._extract_text(filename, content)
             found = (
-                validate_grounding(text, profile.facts, allow=allow)
+                validate_grounding(text, profile.facts, allow=allow, ai_assisted=ai_assisted)
                 if text is not None
                 else [Violation("unreadable", filename)]
             )
@@ -137,6 +157,16 @@ class DocumentGenerator:
                 )
             )
         return documents, violations
+
+    @staticmethod
+    def _project_line(project: Dict, language: str) -> str:
+        """Onayli fact'ten tek proje satiri (rolune gore durust ifade)."""
+        role = project.get("role") if project.get("role") in _PROJECT_ROLE_PHRASE else "owner"
+        phrase = _PROJECT_ROLE_PHRASE[role][language]
+        title = str(project.get("title") or "").strip()
+        period = str(project.get("period") or "").strip()
+        head = title + (f" ({period})" if period else "")
+        return f"{head}: {phrase}.".strip()
 
     @staticmethod
     def _extract_text(filename: str, content: bytes) -> str | None:
@@ -230,7 +260,7 @@ class DocumentGenerator:
             f"Focus areas for this role: {focus}. Languages: {languages}."
         )
 
-    def _build_pdf_cv(self, profile, company, title, language, tailoring) -> bytes:
+    def _build_pdf_cv(self, profile, company, title, language, tailoring, project_lines=None) -> bytes:
         buffer = io.BytesIO()
         document = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=40, rightMargin=40, topMargin=36, bottomMargin=36)
         styles = self._base_styles()
@@ -265,10 +295,15 @@ class DocumentGenerator:
             Paragraph("Languages" if language == "en" else "Sprachen", styles["heading"]),
             Paragraph(escape(" | ".join(f"{key}: {value}" for key, value in profile.languages.items())), styles["body"]),
         ]
+        if project_lines:
+            elements.extend([
+                Paragraph("Selected Projects" if language == "en" else "Ausgewählte Projekte", styles["heading"]),
+                *(Paragraph(escape(line), styles["body"]) for line in project_lines),
+            ])
         document.build(elements)
         return buffer.getvalue()
 
-    def _build_docx_cv(self, profile, company, title, language, tailoring) -> bytes:
+    def _build_docx_cv(self, profile, company, title, language, tailoring, project_lines=None) -> bytes:
         document = docx.Document()
         document.add_heading(profile.name, level=0)
         contact = document.add_paragraph()
@@ -288,6 +323,10 @@ class DocumentGenerator:
         document.add_paragraph("Education: " + "; ".join(f"{item.get('degree', '')} — {item.get('institution', '')}" for item in profile.education))
         document.add_heading("Languages" if language == "en" else "Sprachen", level=1)
         document.add_paragraph(" | ".join(f"{key}: {value}" for key, value in profile.languages.items()))
+        if project_lines:
+            document.add_heading("Selected Projects" if language == "en" else "Ausgewählte Projekte", level=1)
+            for line in project_lines:
+                document.add_paragraph(line)
         for paragraph in document.paragraphs:
             for run in paragraph.runs:
                 run.font.name = "Aptos"
@@ -296,7 +335,7 @@ class DocumentGenerator:
         document.save(buffer)
         return buffer.getvalue()
 
-    def _build_pdf_cover_letter(self, profile, company, title, language, tailoring) -> bytes:
+    def _build_pdf_cover_letter(self, profile, company, title, language, tailoring, ai_assisted=False) -> bytes:
         buffer = io.BytesIO()
         document = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=45, rightMargin=45, topMargin=45, bottomMargin=45)
         styles = self._base_styles()
@@ -309,8 +348,7 @@ class DocumentGenerator:
         contact = " &bull; ".join(escape(part) for part in self._contact_parts(profile))
         if language == "de":
             paragraphs = [
-                f"Sehr geehrtes Recruiting-Team bei {escape(company)},",
-                f"mit {profile.experience_years} Jahren Berufserfahrung als {top_skills[0] if top_skills else 'Fachkraft'} "
+                f"Sehr geehrtes Recruiting-Team bei {escape(company)},",                f"mit {profile.experience_years} Jahren Berufserfahrung als {top_skills[0] if top_skills else 'Fachkraft'} "
                 f"bewerbe ich mich für die Position <b>{escape(title)}</b>. Besonders relevant sind meine "
                 f"verifizierten Kenntnisse in {', '.join(f'<b>{skill}</b>' for skill in top_skills)}.",
                 f"Die Ausschreibung betont {escape(focus)}. Diese Schwerpunkte decken sich mit meiner dokumentierten "
@@ -334,6 +372,8 @@ class DocumentGenerator:
                 "I would welcome the opportunity to discuss how this background fits your requirements.",
                 f"Sincerely,<br/>{escape(profile.name)}",
             ]
+        if ai_assisted:
+            paragraphs.insert(len(paragraphs) - 1, _COVER_AI_SENTENCE[language])
         elements = [
             Paragraph(escape(profile.name), styles["title"]),
             Paragraph(contact, styles["subtitle"]),

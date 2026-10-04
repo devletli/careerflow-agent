@@ -45,6 +45,9 @@ profile/*.docx
 profile/*.txt
 !profile/README.md
 !profile/PUT_MASTER_CV_HERE.txt
+# Yerel kaynak klasoru (CV/kaynak metinler; repoya girmez, ornek dosyalar haric)
+profile/sources/*
+!profile/sources/PUT_CV_HERE.txt
 
 # Generated documents, downloads, and browser session data
 artifacts/

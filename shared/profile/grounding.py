@@ -17,7 +17,7 @@ from shared.profile.tech_vocab import KNOWN_TECH_VOCAB
 
 @dataclass
 class Violation:
-    kind: str  # "employer" | "skill" | "metric" | "date" | "degree"
+    kind: str  # "employer" | "skill" | "metric" | "date" | "degree" | "authorship"
     claim: str
 
 
@@ -48,6 +48,19 @@ _ORG_RE = re.compile(
     r"\b([A-Z][\w&.-]*(?:\s+[A-Z][\w&.-]*)*)\s+"
     r"(GmbH|AG|Inc|Ltd|LLC|Corp|UG|SE|SA|BV)\b"
 )
+# ai_assisted projesi varken "tek basima/elle yazdim" iddiasi durust degildir.
+_SOLE_AUTHORSHIP_PATTERNS = [
+    r"tamamen\s+elle",
+    r"tamamını\s+kendim",
+    r"tamamen\s+manuel",
+    r"tek\s+baş(ı|i)ma\s+(yazdım|geliştirdim|yaptım)",
+    r"fully\s+hand-?written",
+    r"entirely\s+(hand-?written|by\s+hand|manually)",
+    r"written\s+entirely\s+by\s+hand",
+    r"without\s+any\s+ai\b",
+    r"no\s+ai\s+assistance",
+    r"100%\s+manual",
+]
 _WORKED_AT_RE = re.compile(
     r"(?:worked at|employed by|joined)\s+([A-Z][\w&.-]*(?:\s+[A-Z][\w&.-]*)*)",
 )
@@ -90,8 +103,13 @@ def validate_grounding(
     generated: str,
     profile: Dict[str, Any],
     allow: Sequence[str] = (),
+    ai_assisted: bool = False,
 ) -> List[Violation]:
-    """Returns grounding violations of generated text against the profile."""
+    """Returns grounding violations of generated text against the profile.
+
+    ai_assisted=True iken "tamamen elle yazdim" turu tek-yazarlik
+    iddialari da ihlal sayilir (durust ifade zorunlulugu).
+    """
     violations: List[Violation] = []
     # Normalize extraction artifacts (PDF line breaks) before matching.
     text = re.sub(r"\s+", " ", generated)
@@ -130,6 +148,13 @@ def validate_grounding(
         org = match.group(1)
         if org.lower() not in known_orgs and not _allowed(org, allow):
             violations.append(Violation("employer", org))
+
+    # --- authorship: ai_assisted projede tek-yazarlik iddiasi yasak ---
+    if ai_assisted:
+        for pattern in _SOLE_AUTHORSHIP_PATTERNS:
+            hit = re.search(pattern, text, re.IGNORECASE)
+            if hit and not _allowed(hit.group(0), allow):
+                violations.append(Violation("authorship", hit.group(0).strip()))
 
     # --- dates: employment date ranges must be allowlisted (e.g. letterhead) ---
     for match in _DATE_RANGE_RE.finditer(text):
