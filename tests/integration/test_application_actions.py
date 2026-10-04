@@ -110,6 +110,32 @@ def client(seed):
     yield __import__("fastapi.testclient", fromlist=["TestClient"]).TestClient(_api.app)
 
 
+class _FakeRedis:
+    """Token deposu yerine gecer (TTL test disi; unit test kapsar)."""
+
+    def __init__(self):
+        self.d = {}
+
+    async def set(self, key, value, ex=None):
+        self.d[key] = value
+
+    async def getdel(self, key):
+        return self.d.pop(key, None)
+
+
+@pytest.fixture(autouse=True)
+def _fake_token_store(monkeypatch):
+    from app.deps import redis_bus
+
+    fake = _FakeRedis()
+
+    async def _get_redis():
+        return fake
+
+    monkeypatch.setattr(redis_bus, "get_redis", _get_redis)
+    return fake
+
+
 def _execute(client, app_id, action, token=None):
     body = {"action": action}
     if token is not None:

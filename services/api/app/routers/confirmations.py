@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status as http_status
 from pydantic import BaseModel
 
 from app import confirmations
+from app.deps import redis_bus
 from app.security import require_api_key
 
 router = APIRouter(
@@ -21,7 +22,7 @@ class ConfirmationRequest(BaseModel):
 
 
 @router.post("")
-def create_confirmation(request: ConfirmationRequest) -> dict[str, Any]:
+async def create_confirmation(request: ConfirmationRequest) -> dict[str, Any]:
     """Browser aksiyonu icin tek kullanimlik onay tokeni uretir.
 
     Dashboard, kullanicinin acik onayinin HEMEN ardindan bunu cagirir ve
@@ -33,7 +34,8 @@ def create_confirmation(request: ConfirmationRequest) -> dict[str, Any]:
             detail="An application_id is required to confirm a submission.",
         )
     try:
-        token, ttl = confirmations.mint_confirmation_token(
+        token, ttl = await confirmations.mint_confirmation_token(
+            await redis_bus.get_redis(),
             request.action,
             str(request.application_id) if request.application_id else None,
         )

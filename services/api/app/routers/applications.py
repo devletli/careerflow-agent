@@ -121,9 +121,9 @@ async def execute_application_action(
                 status_code=http_status.HTTP_409_CONFLICT,
                 detail=f"Submit is only valid from READY_TO_SUBMIT (current: {status}).",
             )
-        # Faz 3B: UI onayina guvenme; tek kullanimlik sunucu tokeni sart.
-        if not confirmations.consume_confirmation_token(
-            request.confirmation_token, "submit", str(application_id)
+        # Faz 3B: UI onayina guvenme; tek kullanimlik sunucu tokeni sart (B2: Redis GETDEL).
+        if not await confirmations.consume_confirmation_token(
+            await redis_bus.get_redis(), request.confirmation_token, "submit", str(application_id)
         ):
             raise HTTPException(
                 status_code=http_status.HTTP_409_CONFLICT,

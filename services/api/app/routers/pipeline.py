@@ -55,8 +55,9 @@ async def run_pipeline_action(
             status_code=http_status.HTTP_409_CONFLICT,
             detail="Explicit confirmation is required before this browser action.",
         )
-    # Faz 3B: UI onay bayragi yetmez; tek kullanimlik sunucu tokeni sart.
-    if request.action in CONFIRMATION_REQUIRED_ACTIONS and not confirmations.consume_confirmation_token(
+    # Faz 3B: UI onay bayragi yetmez; tek kullanimlik sunucu tokeni sart (B2: Redis GETDEL).
+    if request.action in CONFIRMATION_REQUIRED_ACTIONS and not await confirmations.consume_confirmation_token(
+        await redis_bus.get_redis(),
         request.confirmation_token,
         request.action,
         str(request.application_id) if request.application_id else None,
