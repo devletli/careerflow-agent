@@ -65,7 +65,7 @@ def test_tabs_come_from_single_array_and_switch(viewport):
                     "tab", name=tab, exact=True
                 ).is_visible(), f"tab not visible: {tab} @ {viewport}"
             for tab in ("Jobs", "Applications", "Documents"):
-                page.get_by_role("button", name=tab, exact=True).click()
+                page.get_by_role("tab", name=tab, exact=True).click()
                 page.wait_for_timeout(1500)
                 assert f"#{tab.lower()}" in page.url
                 assert (
