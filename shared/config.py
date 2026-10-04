@@ -42,8 +42,8 @@ class Settings(BaseSettings):
     ENV: str = "dev"  # dev | prod
 
     # Pipeline automation
-    # GECICI varsayilan; golden-set ile kalibre edilecek (Faz 6).
-    MIN_MATCH_SCORE: int = 70
+    # Golden-set ile kalibre edildi (25/25 dogruluk; bkz. README "Match-score calibration").
+    MIN_MATCH_SCORE: int = 90
     AUTOMATION_MODE: str = "PREPARE_APPLICATION"
     AUTO_SUBMIT: bool = False
     MAX_APPLICATIONS_PER_DAY: int = 20
@@ -88,7 +88,7 @@ class Settings(BaseSettings):
             raise ValueError("FULL_AUTO requires explicit AUTO_SUBMIT=true")
         if not 0 <= self.MIN_MATCH_SCORE <= 100:
             raise ValueError("MIN_MATCH_SCORE must be 0-100")
-        if self.MIN_MATCH_SCORE >= 90:
+        if self.MIN_MATCH_SCORE >= 95:
             log.warning(
                 "MIN_MATCH_SCORE=%s very high; QUALIFIED count may be ~0",
                 self.MIN_MATCH_SCORE,

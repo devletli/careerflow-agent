@@ -60,7 +60,7 @@ The current architecture is retained for now. For a single-user deployment, futu
 
 ## Roadmap
 
-Completed: Phases 0–8, Phase 9 submission adapters for Greenhouse/Lever, and the Phase 10 reliability baseline above (including T4 security tests, T5 stream recovery, and T7 CI/backup/i18n/golden-set/JSON logging).
+Completed: Phases 0–8, Phase 9 submission adapters for Greenhouse/Lever, and the Phase 10 reliability baseline above (including T4 security tests, T5 stream recovery, and T7 CI/backup/i18n/golden-set/JSON logging). Follow-up hardening (`yama.md` Faz 1–6): single settings validation with secret enforcement, per-connector enable flags, LLM model startup validation with dashboard indicator, backend-driven dashboard search/filters, single-use server-side confirmation tokens for browser actions, `idempotency_key` audit column, missing query indexes (revisions 004–005), dead `site_adapters` table removal (006), `MIN_MATCH_SCORE=90` golden-set calibration, and `make test/smoke/lint` targets.
 
 Current: manual pipeline operation via the dashboard; German-market discovery adapters (Bundesagentur, Arbeitnow) in regular use.
 
@@ -80,13 +80,13 @@ docker compose up --build
 
 5. API: `http://localhost:8000` (`/health`, `/api/v1/status`, `/api/v1/jobs`, `/api/v1/applications`, `/api/v1/documents`, `/api/v1/events`). Per-application actions go through `PATCH /api/v1/applications/{id}/execute` with an explicit `{"action": "prepare"|"submit"|"retry"|"continue"}` body: submit queues the browser only in `FULL_AUTO` + `AUTO_SUBMIT=true` (otherwise 409), retry is allowed only from `FAILED`, and an unverified click yields `REQUIRES_HUMAN` instead of an automatic retry. Browser actions (`fill_applications` / `submit_application` pipeline actions and per-application `submit`) additionally require a single-use server-side confirmation token: mint via `POST /api/v1/confirmations` right after the user confirms in the dashboard (valid 5 minutes, bound to the action + application). Documents stream privately via `/api/v1/documents/{id}/file` (never a raw MinIO URL).
 6. Frontend dashboard: `http://localhost:3000` (Overview / Jobs / Documents / Applications / Events / Settings tabs, auto-refreshing every 10s). The Overview tab provides confirmed actions for discovery, matching, document generation, form analysis, and form filling. The Applications table shows exactly one action set per row based on backend status (`CREATED→Prepare`, `READY_TO_SUBMIT→Submit`, `RUNNING→View`, `REQUIRES_HUMAN→Continue`, `FAILED→Retry`, `SUBMITTED→Details`).
-7. MinIO Console: `http://127.0.0.1:9001` (credentials from `.env`: `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`)
+7. MinIO Console: `http://127.0.0.1:9001` (sign in with `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` from `.env`)
 
 > **Note:** MinIO removed the `minio/minio` image from Docker Hub, so `docker-compose.yml` pins `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z` instead.
 
 ## Security
 
-- Copy `.env.example` to `.env` and replace every `CHANGE_ME_…` placeholder with strong values before starting the stack.
+- Copy `.env.example` to `.env` and fill in every empty secret (`POSTGRES_PASSWORD`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `API_KEY`) with strong values before starting the stack.
 - All API routes except `/health` require the shared `API_KEY` (`X-API-Key` header). The dashboard forwards it server-side via Next.js middleware, so the key never reaches the browser.
 - Public ports bind to `127.0.0.1` only; PostgreSQL, Redis, and MinIO's S3 port are not published to the host (use `docker compose exec` for direct access).
 - Startup fail-fast: invalid automation settings or weak default secrets (in `ENV=prod`) abort services immediately instead of running misconfigured.
@@ -99,8 +99,10 @@ Run the complete unit and integration test suite (pure-Python, no Docker service
 
 ```bash
 python -m venv .venv
-.venv\Scripts\pip install -e ./shared pytest pytest-asyncio aiosqlite
-.venv\Scripts\python -m pytest -v
+# POSIX: .venv/bin/pip install -e ./shared pytest pytest-asyncio aiosqlite
+# Windows (PowerShell): .venv\Scripts\pip install -e ./shared pytest pytest-asyncio aiosqlite
+python -m pytest -v
+# or: make test
 ```
 
 Lint and type-check (must pass for CI):
@@ -190,6 +192,28 @@ against the provider's model list; if it is missing/invalid, the API `/api/v1/st
 reports `"llm_status": {"state": "disabled", "reason": ...}` (also shown on the
 dashboard) and matching continues deterministically.
 
+## Match-score calibration
+
+`MIN_MATCH_SCORE` defaults to **90**, calibrated on `tests/golden/jobs.jsonl`
+(25 adverts, fixed synthetic profile). Sweeping a single threshold T with the
+production matcher (`QUALIFIED` = score ≥ T, `REVIEW` = T−10 ≤ score < T):
+
+| T | agreement |
+|---|-----------|
+| 70 | 12 / 25 |
+| 75 | 17 / 25 |
+| 80 | 20 / 25 |
+| 85 | 23 / 25 |
+| **90** | **25 / 25** |
+
+The golden rows and `evals/matching_cases.json` both pin `threshold`/`min_threshold`
+90, so the code default matches the datasets. Scores cluster cleanly (QUALIFIED
+≥ 92.8, REVIEW 80.6–84.3, NOT_QUALIFIED ≤ 77.8), leaving a ~15-point margin
+around the cutoff; near-misses still surface as REVIEW for human check.
+`MIN_MATCH_SCORE >= 95` logs a startup warning (golden QUALIFIED minimum is
+92.8, so almost nothing would qualify). Recalibrate if matcher weights or the
+profile change: re-run the sweep and update this table.
+
 ## Remaining Risks / Known Limitations
 
 - `tests/fixtures/forms/` covers Greenhouse/Lever/Workable form parsing, safe-answer resolution, blocker hard-stop, and fill-without-submit locally; live browser-agent runs still exercise real public job boards in `PREPARE_APPLICATION` mode (fill-only, never submits).
@@ -198,3 +222,4 @@ dashboard) and matching continues deterministically.
 - Matching is keyword-taxonomy based: mandatory requirements outside the taxonomy, non-German/English language requirements, and junior titles are only weakly penalized (pinned by `evals/matching_cases.json` notes and `tests/golden/jobs.jsonl`).
 - `scripts/backup.sh`/`restore.sh` cover PostgreSQL dumps and MinIO bucket mirrors on a single host; point-in-time recovery and off-host copies remain manual.
 - JSON logging is opt-in (`LOG_FORMAT=json`); the default text format carries no structured correlation ids.
+- Migration skew: `init-db` runs migrations from its image, so after adding a migration every image using the orchestrator Dockerfile (`orchestrator`, `init-db`) must be rebuilt before `up`, otherwise the old `init-db` fails with "Can't locate revision" and blocks dependents.

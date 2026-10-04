@@ -11,8 +11,14 @@ ps:
 	docker compose ps
 
 test:
-	docker compose run --rm job-matching pytest
-	docker compose run --rm job-discovery pytest
+	python -m pytest -m "not live" -q
+
+smoke:
+	python scripts/smoke.py
+
+lint:
+	python -m ruff check .
+	python -m mypy shared/ services/api/app/
 
 discover:
 	docker compose run --rm job-discovery python -m app.worker --once
@@ -30,7 +36,7 @@ browser:
 	docker compose run --rm browser-agent python -m app.worker --once
 
 explorer:
-	explorer artifacts
+	python -c "import webbrowser; webbrowser.open('artifacts')"
 
 backup:
 	bash scripts/backup.sh

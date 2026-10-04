@@ -30,6 +30,9 @@ jobs:
       - name: Type-check shared contracts
         run: mypy shared/
 
+      - name: Type-check API
+        run: mypy services/api/app
+
       - name: Backend tests (unit + integration + matching eval, live excluded)
         run: python -m pytest -m "not live" -q
 
