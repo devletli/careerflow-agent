@@ -109,7 +109,7 @@ Lint and type-check (must pass for CI):
 
 ```bash
 python -m ruff check .
-python -m mypy shared/
+python -m mypy shared/ services/api/app/
 ```
 
 Run the matching evaluation and golden-set regression (offline, uses the
@@ -125,6 +125,13 @@ skips automatically if Chromium is not installed):
 ```bash
 .venv\Scripts\python -m pytest tests/unit/test_browser_regression.py -v
 # optional, to run the Playwright part: python -m playwright install chromium
+```
+
+Live dashboard e2e (needs the compose stack on localhost:3000 plus Chromium;
+excluded from CI via `-m "not live"`):
+
+```bash
+python -m pytest tests/browser/test_dashboard_e2e.py -v
 ```
 
 Build the frontend dashboard:
