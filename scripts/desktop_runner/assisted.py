@@ -8,6 +8,7 @@ to reveal the form; submit-family labels are never clicked.
 """
 from __future__ import annotations
 
+import logging
 import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -48,6 +49,8 @@ REASONS = {
 }
 
 MAX_STEPS = 12
+
+logger = logging.getLogger("desktop-runner")
 
 SKIP_TYPES = {
     "file",
@@ -336,19 +339,23 @@ async def run_assisted(
         await mark_unverified(page, step.unverified_locators)
         summary.filled.extend(step.filled)
         summary.unverified.extend(step.unverified_required)
+        logger.info(
+            "Adım sonucu: %d dolduruldu, %d doğrulanmamış gerekli alan.",
+            len(step.filled),
+            len(step.unverified_required),
+        )
         if step.unverified_required or await is_final_step(page):
             # Posting page?: nothing filled and nothing required, so the form
             # may hide behind an "Apply for this job" opener. Try it once;
             # submit-family labels are never clicked (see navigation.py).
-            if (
-                not summary.filled
-                and not summary.unverified
-                and not opener_tried
-                and await click_form_opener(page)
-            ):
-                opener_tried = True
-                await page.wait_for_timeout(1_500)
-                continue
+            if not summary.filled and not summary.unverified and not opener_tried:
+                logger.info("Form açıcı aranıyor (hiç alan doldurulamadı)...")
+                if await click_form_opener(page):
+                    opener_tried = True
+                    logger.info("Form açıcı tıklandı, form taranıyor.")
+                    await page.wait_for_timeout(1_500)
+                    continue
+                logger.info("Form açıcı bulunamadı, bitiriliyor.")
             break
         if not settings.auto_next or not await click_next(page):
             break
