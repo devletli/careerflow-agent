@@ -120,6 +120,43 @@ function ActionPanel({ onRun, runningAction, actionMessage }) {
   );
 }
 
+function ScorePanel({ onNavigate }) {
+  const [stats, setStats] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson("/api/v1/stats/score-distribution")
+      .then((d) => { if (!cancelled) setStats(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  if (!stats) return null;
+  const max = Math.max(1, ...(stats.buckets || []).map((b) => b.count));
+  const qualified = (stats.bands || {}).QUALIFIED || 0;
+  return (
+    <div className="panel" style={{ marginBottom: 16 }}>
+      <h3 style={{ marginTop: 0 }}>{STRINGS.scoreDist}</h3>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 64 }}>
+        {(stats.buckets || []).map((b) => (
+          <div
+            key={b.from}
+            title={`${b.from}–${b.to}: ${b.count}`}
+            style={{ flex: 1, height: `${Math.round((b.count / max) * 56) + 4}px`, background: "var(--accent)" }}
+          />
+        ))}
+      </div>
+      {qualified === 0 && (
+        <p className="muted">
+          {(STRINGS.scoreEmpty || "")
+            .replace("{max}", stats.max_score ?? "–")
+            .replace("{threshold}", stats.threshold ?? "–")}{" "}
+          <button className="link" onClick={() => onNavigate(1, { band: "REVIEW" })}>
+            {STRINGS.reviewList}
+          </button>
+        </p>
+      )}
+    </div>
+  );
+}
 function InboxCards({ inbox, onNavigate }) {
   // Sekme adları i18n'e göre değişir; TABS sırası sabittir (1=Jobs, 3=Applications).
   const cards = [
@@ -145,6 +182,7 @@ export default function OverviewTab({ status, applications, inbox, onNavigate, e
   return (
     <div>
       <InboxCards inbox={inbox} onNavigate={onNavigate} />
+      <ScorePanel onNavigate={onNavigate} />
       <FollowUpPanel applications={applications} />
       <ActionPanel onRun={onRun} runningAction={runningAction} actionMessage={actionMessage} />
       <div className="panel">

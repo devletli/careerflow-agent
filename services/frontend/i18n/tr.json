@@ -166,6 +166,9 @@
   "inboxToPrepare": "Hazırlanacak",
   "inboxNewStrong": "Yeni güçlü eşleşme",
   "advanced": "Gelişmiş",
+  "scoreDist": "Skor dağılımı",
+  "scoreEmpty": "En yüksek skor {max}, eşik {threshold}. REVIEW listesine bak.",
+  "reviewList": "REVIEW listesi",
   "status": {
     "created": "Oluşturuldu",
     "discovered": "Bulundu",

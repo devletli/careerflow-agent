@@ -166,6 +166,9 @@
   "inboxToPrepare": "To prepare",
   "inboxNewStrong": "New strong matches",
   "advanced": "Advanced",
+  "scoreDist": "Score distribution",
+  "scoreEmpty": "Top score {max}, threshold {threshold}. Check the REVIEW list.",
+  "reviewList": "REVIEW list",
   "status": {
     "created": "Created",
     "discovered": "Discovered",
