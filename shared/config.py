@@ -83,6 +83,16 @@ class Settings(BaseSettings):
     BUNDESAGENTUR_ENABLED: bool = True
     ARBEITNOW_ENABLED: bool = True
 
+    # Faz 1: kesif/listeleme sinirlari koda gomulu degil, buradan ve .env'den gelir.
+    DISCOVERY_MAX_JOBS_PER_SOURCE: int = 3000
+    DISCOVERY_MAX_PAGES_PER_SOURCE: int = 60
+    DISCOVERY_PAGE_DELAY_SECONDS: float = 1.0
+    DISCOVERY_DETAIL_CONCURRENCY: int = 4
+    DISCOVERY_TIME_BUDGET_SECONDS: int = 900
+    LLM_EXPLAIN_MAX_PER_RUN: int = 50
+    JOBS_PAGE_SIZE: int = 100
+    JOBS_STALE_AFTER_DAYS: int = 30
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_REDACT_PII: bool = True
@@ -105,6 +115,21 @@ class Settings(BaseSettings):
             )
         if self.MAX_APPLICATIONS_PER_HOUR > self.MAX_APPLICATIONS_PER_DAY:
             raise ValueError("hourly limit cannot exceed daily limit")
+        for _name, _value in (
+            ("DISCOVERY_MAX_JOBS_PER_SOURCE", self.DISCOVERY_MAX_JOBS_PER_SOURCE),
+            ("DISCOVERY_MAX_PAGES_PER_SOURCE", self.DISCOVERY_MAX_PAGES_PER_SOURCE),
+            ("DISCOVERY_DETAIL_CONCURRENCY", self.DISCOVERY_DETAIL_CONCURRENCY),
+            ("DISCOVERY_TIME_BUDGET_SECONDS", self.DISCOVERY_TIME_BUDGET_SECONDS),
+            ("LLM_EXPLAIN_MAX_PER_RUN", self.LLM_EXPLAIN_MAX_PER_RUN),
+            ("JOBS_PAGE_SIZE", self.JOBS_PAGE_SIZE),
+            ("JOBS_STALE_AFTER_DAYS", self.JOBS_STALE_AFTER_DAYS),
+        ):
+            if _value <= 0:
+                raise ValueError(f"{_name} must be > 0 (0 = sinirsiz yasak)")
+        if self.DISCOVERY_PAGE_DELAY_SECONDS < 0.2:
+            raise ValueError(
+                "DISCOVERY_PAGE_DELAY_SECONDS must be >= 0.2 (kaynagi hammer'lama)"
+            )
         if self.LOG_FORMAT not in {"text", "json"}:
             raise ValueError("LOG_FORMAT must be text or json")
         for name in REQUIRED_SECRETS:
