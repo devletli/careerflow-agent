@@ -175,7 +175,9 @@ The Docker browser worker must remain headless, so use the desktop helper when y
 .\scripts\install-desktop-runner.ps1
 ```
 
-After installation, use **Fill with Playwright** in the dashboard's **Applications** tab. It starts a local Chromium session, fills only verified profile answers and available documents, then leaves the browser open. Complete CAPTCHA, sign-in/MFA, and any unanswered questions yourself, then review and submit in that same visible browser window.
+After installation, use **Fill with Playwright** in the dashboard's **Applications** tab. It starts a local visible session (installed Chrome by default), fills only verified profile answers and available documents, then leaves the browser open. Flow: fill → on CAPTCHA/sign-in/MFA a panel hands control to you and waits (up to `DESKTOP_HANDOFF_TIMEOUT_SECONDS`, default 900s) → continues automatically once the blocker clears → advances multi-step forms with Next-type buttons only. Complete the blocker and any yellow-outlined fields yourself, then review and submit in that same visible window.
+
+Guarantees: never auto-solves CAPTCHA/login/MFA, never writes passwords/OTPs/credentials, never overwrites pre-filled values, never clicks Submit (only the confirmed dashboard flow submits), never clicks "accept all" (reject/necessary-only). The persistent profile lives outside the repo at `%LOCALAPPDATA%\careerflow\browser-profile` (cookies/storage are never read or logged); `--fresh-profile` opens a throwaway session instead. Settings (`DESKTOP_*`, see `.env.example`) live in `scripts/desktop_runner/config.py`, independent of the Docker `shared.config`. The headless Docker browser-agent is unchanged (still hard-stops on blockers).
 
 ## Gemini Configuration
 
