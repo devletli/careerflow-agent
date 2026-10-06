@@ -1,9 +1,11 @@
 """Multi-step navigation + cookie-banner helper (stdlib + playwright only).
 
-Submit-type buttons ("Gönder/Absenden/Apply/Submit") are NEVER clicked here;
-submission stays exclusively in the confirmed dashboard flow. Only "Next"-
-type buttons advance a multi-step form. Cookie banners: only a
-reject/necessary-only button is ever clicked; "accept all" never is.
+Submit-type buttons ("Gönder/Absenden/Apply Now/Submit") are NEVER clicked
+here; submission stays exclusively in the confirmed dashboard flow. Only
+"Next"-type buttons advance a multi-step form, and only narrow form-opener
+labels ("Apply for this job") reveal a hidden form on posting pages.
+Cookie banners: only a reject/necessary-only button is ever clicked;
+"accept all" never is.
 """
 from __future__ import annotations
 
@@ -19,6 +21,16 @@ SUBMIT_RX = re.compile(
 
 NEXT_RX = re.compile(
     r"^(next|continue|weiter|n.chster schritt|devam|ileri)$", re.I
+)
+
+# Form openers: labels that reveal the application form on a posting page
+# (Ashby/Greenhouse/Lever style). Deliberately narrow; anything matching
+# SUBMIT_RX stays forbidden and is checked first in click_form_opener.
+FORM_OPENER_RX = re.compile(
+    r"^(apply for this (job|position)|apply to this job|"
+    r"(auf|f.r) diese stelle bewerben|"
+    r"bu (ilana|pozisyona) ba.l?vur)$",
+    re.I,
 )
 
 REJECT_RX = re.compile(
@@ -48,6 +60,30 @@ async def click_next(page: Page) -> bool:
             continue
         try:
             if NEXT_RX.match(name) and await btn.is_visible() and await btn.is_enabled():
+                await btn.click()
+                await page.wait_for_load_state("domcontentloaded")
+                return True
+        except Exception:
+            continue
+    return False
+
+
+async def click_form_opener(page: Page) -> bool:
+    """Click a form-opening button (never a submit button).
+
+    Only for posting pages: reveals the hidden application form so the
+    assisted loop can fill it. Submit labels are skipped even if they
+    also matched the opener pattern.
+    """
+    for btn in await page.get_by_role("button").all():
+        try:
+            name = (await btn.inner_text()).strip()
+        except Exception:
+            continue
+        if not name or is_submit_label(name):
+            continue
+        try:
+            if FORM_OPENER_RX.match(name) and await btn.is_visible() and await btn.is_enabled():
                 await btn.click()
                 await page.wait_for_load_state("domcontentloaded")
                 return True

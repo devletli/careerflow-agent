@@ -2,7 +2,9 @@
 
 Adapter-free by design: it reuses the existing verified_answers matching
 (fields.py) and wraps the fill/wait cycle around it. No status reporting in
-v1, no submit clicking, no credential writing.
+v1, no submit clicking, no credential writing. On posting pages with zero
+filled fields, a narrow form-opener ("Apply for this job") is clicked once
+to reveal the form; submit-family labels are never clicked.
 """
 from __future__ import annotations
 
@@ -33,6 +35,7 @@ from desktop_runner.handoff import (
 )
 from desktop_runner.navigation import (
     NEXT_RX,
+    click_form_opener,
     click_next,
     dismiss_cookie_banner,
     is_submit_label,
@@ -308,6 +311,7 @@ async def run_assisted(
     await page.goto(app_url, wait_until="domcontentloaded", timeout=45_000)
 
     summary = AssistSummary()
+    opener_tried = False
     for _ in range(MAX_STEPS):
         blocker = await detect_blocker(page)
         if blocker:
@@ -333,6 +337,18 @@ async def run_assisted(
         summary.filled.extend(step.filled)
         summary.unverified.extend(step.unverified_required)
         if step.unverified_required or await is_final_step(page):
+            # Posting page?: nothing filled and nothing required, so the form
+            # may hide behind an "Apply for this job" opener. Try it once;
+            # submit-family labels are never clicked (see navigation.py).
+            if (
+                not summary.filled
+                and not summary.unverified
+                and not opener_tried
+                and await click_form_opener(page)
+            ):
+                opener_tried = True
+                await page.wait_for_timeout(1_500)
+                continue
             break
         if not settings.auto_next or not await click_next(page):
             break

@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Posting with opener</title></head>
+<body>
+<h1>Senior Engineer (posting page, no visible form)</h1>
+<p>Join us! Click below to apply.</p>
+<button id="opener" onclick="document.getElementById('appform').style.display='block'; window.__opened=true">Apply for this job</button>
+<form id="appform" style="display:none" onsubmit="return false">
+  <label>First name <input id="first_name" name="first_name" required></label>
+  <button id="send" onclick="window.__submitted=true">Submit application</button>
+</form>
+</body>
+</html>

@@ -158,6 +158,32 @@ async def test_two_step_advances_only_when_required_verified(form_server):
 
 
 @pytest.mark.asyncio
+async def test_opener_reveals_posting_form_then_fills_without_submit(form_server):
+    from playwright.async_api import async_playwright
+
+    assisted = _load("assisted")
+    settings = _settings()
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        try:
+            ctx = await browser.new_context()
+            page, summary = await assisted.run_assisted(
+                ctx,
+                f"{form_server}/posting_with_opener.html",
+                PROFILE,
+                {"first_name": "Ada"},
+                settings,
+                {},
+            )
+            assert await page.evaluate("window.__opened") is True
+            assert await page.locator("#first_name").input_value() == "Ada"
+            assert await page.evaluate("window.__submitted !== true") is True
+            assert summary.timed_out is None
+        finally:
+            await browser.close()
+
+
+@pytest.mark.asyncio
 async def test_two_step_stops_when_required_unverified(form_server):
     from playwright.async_api import async_playwright
 

@@ -119,3 +119,45 @@ def test_submit_labels_classified():
         assert nav.is_submit_label(label) is True
     for label in ("Next", "Weiter", "Devam", "İleri"):
         assert nav.is_submit_label(label) is False
+
+
+@pytest.mark.asyncio
+async def test_click_form_opener_reveals_form_never_submits():
+    from playwright.async_api import async_playwright
+
+    nav = _load("navigation")
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        try:
+            page = await (await browser.new_context()).new_page()
+            await page.set_content(
+                "<html><body>"
+                "<button id='o' onclick=\"window.__o=true\">Apply for this job</button>"
+                "<button id='s' onclick=\"window.__s=true\">Apply Now</button>"
+                "</body></html>"
+            )
+            assert await nav.click_form_opener(page) is True
+            assert await page.evaluate("window.__o") is True
+            assert await page.evaluate("window.__s !== true") is True
+        finally:
+            await browser.close()
+
+
+@pytest.mark.asyncio
+async def test_click_form_opener_returns_false_without_opener():
+    from playwright.async_api import async_playwright
+
+    nav = _load("navigation")
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        try:
+            page = await (await browser.new_context()).new_page()
+            await page.set_content(
+                "<html><body>"
+                "<button id='s' onclick=\"window.__s=true\">Submit application</button>"
+                "</body></html>"
+            )
+            assert await nav.click_form_opener(page) is False
+            assert await page.evaluate("window.__s !== true") is True
+        finally:
+            await browser.close()
