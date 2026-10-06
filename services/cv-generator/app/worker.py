@@ -131,19 +131,36 @@ class CVGeneratorWorker:
         return True
 
     async def generate_all_pending(self) -> int:
-        """Finds all QUALIFIED jobs without documents and generates them."""
+        """Generates for the best QUALIFIED jobs first, capped per run.
+
+        Faz 3: thousands of QUALIFIED rows must not auto-generate thousands of
+        CVs (Gemini quota + MinIO). Only the top CV_AUTO_GENERATE_MAX_PER_RUN
+        by match score are handled; the rest wait for an explicit request.
+        """
+        from sqlalchemy import func
+
+        from shared.config import settings
+        from shared.db.models import JobMatch
+
         count = 0
         async with get_session() as session:
-            stmt = select(Job.id).where(
-                Job.status.in_(
-                    [
-                        PipelineStatus.QUALIFIED.value,
-                        PipelineStatus.DOCUMENTS_READY.value,
-                        PipelineStatus.READY_TO_APPLY.value,
-                        # Re-validate review jobs: fixed templates heal them.
-                        PipelineStatus.DOC_REVIEW_REQUIRED.value,
-                    ]
+            score_col = func.coalesce(JobMatch.overall_score, -1)
+            stmt = (
+                select(Job.id)
+                .outerjoin(JobMatch, JobMatch.job_id == Job.id)
+                .where(
+                    Job.status.in_(
+                        [
+                            PipelineStatus.QUALIFIED.value,
+                            PipelineStatus.DOCUMENTS_READY.value,
+                            PipelineStatus.READY_TO_APPLY.value,
+                            # Re-validate review jobs: fixed templates heal them.
+                            PipelineStatus.DOC_REVIEW_REQUIRED.value,
+                        ]
+                    )
                 )
+                .order_by(score_col.desc(), Job.id)
+                .limit(settings.CV_AUTO_GENERATE_MAX_PER_RUN)
             )
             res = await session.execute(stmt)
             job_ids = res.scalars().all()

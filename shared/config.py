@@ -92,6 +92,7 @@ class Settings(BaseSettings):
     LLM_EXPLAIN_MAX_PER_RUN: int = 50
     JOBS_PAGE_SIZE: int = 100
     JOBS_STALE_AFTER_DAYS: int = 30
+    CV_AUTO_GENERATE_MAX_PER_RUN: int = 10
 
     # Logging
     LOG_LEVEL: str = "INFO"
@@ -123,6 +124,7 @@ class Settings(BaseSettings):
             ("LLM_EXPLAIN_MAX_PER_RUN", self.LLM_EXPLAIN_MAX_PER_RUN),
             ("JOBS_PAGE_SIZE", self.JOBS_PAGE_SIZE),
             ("JOBS_STALE_AFTER_DAYS", self.JOBS_STALE_AFTER_DAYS),
+            ("CV_AUTO_GENERATE_MAX_PER_RUN", self.CV_AUTO_GENERATE_MAX_PER_RUN),
         ):
             if _value <= 0:
                 raise ValueError(f"{_name} must be > 0 (0 = sinirsiz yasak)")

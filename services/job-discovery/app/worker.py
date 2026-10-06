@@ -9,7 +9,7 @@ from uuid import uuid4
 from shared.config import settings
 from shared.contracts.events import DiscoverySummaryEvent, JobDiscoveredEvent, JobNormalizedEvent
 from shared.contracts.models import PipelineStatus
-from shared.db.models import Job
+from shared.db.models import Job, utc_now
 from shared.db.session import get_session, check_db_health
 from shared.infra.redis_bus import RedisEventBus
 from shared.infra.heartbeat import beat
@@ -144,12 +144,14 @@ class JobDiscoveryWorker:
         duration_s = round(time.monotonic() - started, 1)
         if time.monotonic() > deadline:
             budget_exceeded = True
+        stale_count = await self.mark_stale_jobs()
         summary = DiscoverySummaryEvent(
             correlation_id=f"disc-{uuid4().hex[:8]}",
             entity_id="discovery",
             payload={
                 "sources": sources,
                 "total_new": total_new,
+                "stale_marked": stale_count,
                 "duration_s": duration_s,
                 "budget_exceeded": budget_exceeded,
                 "budgets": {
@@ -180,6 +182,7 @@ class JobDiscoveryWorker:
                 job_model.job_fingerprint,
             )
             if existing is not None:
+                existing.last_seen_at = utc_now()  # Faz 3: STALE sweep için görüşü tazele
                 return False  # Already known, incremental skip
 
             job_id = uuid4()
@@ -198,6 +201,7 @@ class JobDiscoveryWorker:
                 publication_metadata=job_model.publication_metadata,
                 job_fingerprint=job_model.job_fingerprint,
                 status=PipelineStatus.NORMALIZED.value,
+                last_seen_at=utc_now(),
                 raw_data=job_model.raw_data,
             )
             session.add(job)
@@ -231,6 +235,29 @@ class JobDiscoveryWorker:
         await self.bus.publish(normalized_ev)
         logger.info(f"Ingested new job: {job_model.company} - {job_model.title} ({job_id})")
         return True
+
+    async def mark_stale_jobs(self) -> int:
+        """Marks jobs unseen for JOBS_STALE_AFTER_DAYS as STALE (kept, hidden).
+
+        Faz 3: history preserved, default listing hides them.
+        """
+        from datetime import timedelta
+
+        cutoff = utc_now() - timedelta(days=settings.JOBS_STALE_AFTER_DAYS)
+        async with get_session() as session:
+            from sqlalchemy import select
+
+            stmt = select(Job).where(
+                Job.last_seen_at.is_not(None),
+                Job.last_seen_at < cutoff,
+                Job.status != "STALE",
+            )
+            rows = (await session.execute(stmt)).scalars().all()
+            for job in rows:
+                job.status = "STALE"
+            if rows:
+                logger.info("Marked %d jobs STALE (unseen since %s)", len(rows), cutoff.date())
+            return len(rows)
 
     async def start(self, once: bool = False, interval_seconds: int = 3600):
         self.running = True

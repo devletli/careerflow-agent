@@ -15,7 +15,7 @@ from shared.infra.redis_bus import RedisEventBus
 from shared.infra.heartbeat import beat
 from shared.infra.jsonlog import correlation, install_json_logging
 from shared.profile.loader import load_canonical_profile
-from app.matcher import JobMatchingEngine
+from app.matcher import JobMatchingEngine, RunBudget
 
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
@@ -33,8 +33,13 @@ class JobMatchingWorker:
         self.profile = load_canonical_profile()
         self.engine = JobMatchingEngine()
         self.running = False
+        # Faz 3: per-run LLM allowance (reset on every sweep).
+        self._llm_budget = RunBudget(settings.LLM_EXPLAIN_MAX_PER_RUN)
 
-    async def match_job(self, job_id: UUID) -> Optional[JobMatch]:
+    def reset_llm_budget(self) -> None:
+        self._llm_budget = RunBudget(settings.LLM_EXPLAIN_MAX_PER_RUN)
+
+    async def match_job(self, job_id: UUID, with_llm: bool = True) -> Optional[JobMatch]:
         """Loads job from DB, runs matching engine, and saves match result."""
         async with get_session() as session:
             stmt = select(Job).where(Job.id == job_id)
@@ -54,12 +59,13 @@ class JobMatchingWorker:
                 profile=self.profile,
                 min_threshold=settings.MIN_MATCH_SCORE,
             )
-            if match_result.qualification.value in ("QUALIFIED", "REVIEW"):
-                match_result = await self.engine.add_llm_explanation(
+            if match_result.qualification.value in ("QUALIFIED", "REVIEW") and with_llm:
+                await self.engine.explain_if_needed(
                     result=match_result,
                     title=job.title,
                     description=job.description or "",
                     profile=self.profile,
+                    budget=self._llm_budget,
                 )
 
             # Check existing match or insert new
@@ -127,8 +133,14 @@ class JobMatchingWorker:
         return match_record
 
     async def match_all_unmatched(self, include_matched: bool = False) -> int:
-        """Evaluates normalized jobs, or all non-terminal jobs when requested."""
+        """Evaluates normalized jobs, or all non-terminal jobs when requested.
+
+        Faz 3: deterministic scoring is cheap and runs for all rows; the LLM
+        LLM narrative runs only for the top LLM_EXPLAIN_MAX_PER_RUN rows by score.
+        """
+
         count = 0
+        self.reset_llm_budget()
         async with get_session() as session:
             if include_matched:
                 stmt = select(Job.id).where(
@@ -147,9 +159,71 @@ class JobMatchingWorker:
             job_ids = res.scalars().all()
 
         for j_id in job_ids:
-            await self.match_job(j_id)
+            await self.match_job(j_id, with_llm=False)
             count += 1
+        await self._explain_top_candidates()
         return count
+
+    async def _explain_top_candidates(self) -> int:
+        """LLM narrative for the best unscored-explanation rows (budgeted)."""
+        from sqlalchemy import desc
+
+        from shared.db.models import Job as JobModel
+
+        explained = 0
+        async with get_session() as session:
+            stmt = (
+                select(JobMatch, JobModel.title, JobModel.description)
+                .join(JobModel, JobModel.id == JobMatch.job_id)
+                .where(JobMatch.qualification_status.in_(["QUALIFIED", "REVIEW"]))
+                .order_by(desc(JobMatch.overall_score), JobMatch.job_id)
+                .limit(settings.LLM_EXPLAIN_MAX_PER_RUN * 2)
+            )
+            rows = (await session.execute(stmt)).all()
+            targets = []
+            for match_row, title, description in rows:
+                if match_row.explanation and not match_row.explanation.startswith(
+                    "Overall Match Score:"
+                ):
+                    continue  # already has an LLM narrative
+                targets.append(match_row.id)
+                if len(targets) >= settings.LLM_EXPLAIN_MAX_PER_RUN:
+                    break
+        for match_id in targets:
+            async with get_session() as session:
+                match_row = await session.get(JobMatch, match_id)
+                if match_row is None:
+                    continue
+                job = await session.get(Job, match_row.job_id)
+                if job is None:
+                    continue
+                from shared.contracts.models import JobMatchResult, QualificationStatus
+
+                result = JobMatchResult(
+                    job_id=job.id,
+                    overall_score=match_row.overall_score,
+                    confidence=match_row.confidence,
+                    qualification=QualificationStatus(match_row.qualification_status),
+                    component_scores=match_row.component_scores or {},
+                    hard_requirements=match_row.hard_requirements or [],
+                    matching_skills=match_row.matching_skills or [],
+                    missing_skills=match_row.missing_skills or [],
+                    risks=[],
+                    explanation=match_row.explanation or "",
+                )
+                applied = await self.engine.explain_if_needed(
+                    result=result,
+                    title=job.title,
+                    description=job.description or "",
+                    profile=self.profile,
+                    budget=self._llm_budget,
+                )
+                if applied:
+                    match_row.explanation = result.explanation
+                    explained += 1
+        if explained:
+            logger.info("LLM explanations applied to %d top candidates", explained)
+        return explained
 
     async def start(self, once: bool = False):
         self.running = True

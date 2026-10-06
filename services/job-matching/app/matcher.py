@@ -41,6 +41,28 @@ class MatchNarrative(BaseModel):
     risks: List[str] = Field(default_factory=list, max_length=8)
 
 
+# Faz 3: deterministic explanation prefix. Rows whose explanation still starts
+# with this never received an LLM narrative (LLM overwrites it) — used to
+# detect "explain on demand" candidates without a schema change.
+DETERMINISTIC_EXPLANATION_PREFIX = "Overall Match Score:"
+
+
+class RunBudget:
+    """Per-run LLM allowance. Each explanation consumes one unit."""
+
+    def __init__(self, max_items: int):
+        self.remaining = max(0, int(max_items))
+
+    def take(self) -> bool:
+        if self.remaining <= 0:
+            return False
+        self.remaining -= 1
+        return True
+
+    def __len__(self) -> int:
+        return self.remaining
+
+
 class JobMatchingEngine:
     def __init__(self, weights: Optional[Dict[str, float]] = None):
         self.weights = weights or DEFAULT_WEIGHTS
@@ -216,6 +238,33 @@ class JobMatchingEngine:
         gate_prior = [r for r in (result.risks or []) if r.startswith("gate:")]
         result.risks = gate_prior + narrative.risks
         return result
+
+    async def explain_if_needed(
+        self,
+        result: JobMatchResult,
+        title: str,
+        description: str,
+        profile: CanonicalProfile,
+        budget: RunBudget,
+    ) -> bool:
+        """LLM narrative only when needed and budgeted. Score never changes.
+
+        Returns True when an LLM explanation was applied.
+        """
+        if result.qualification == QualificationStatus.NOT_QUALIFIED:
+            return False
+        if result.explanation and not result.explanation.startswith(DETERMINISTIC_EXPLANATION_PREFIX):
+            return False  # already has an LLM narrative
+        if not budget.take():
+            return False  # budget spent; produced on demand later
+        before = (result.overall_score, result.qualification)
+        updated = await self.add_llm_explanation(
+            result=result, title=title, description=description, profile=profile
+        )
+        assert (updated.overall_score, updated.qualification) == before, "LLM must not change score"
+        return updated.explanation is not None and updated.explanation.startswith(
+            DETERMINISTIC_EXPLANATION_PREFIX
+        ) is False
 
     def _match_skills(
         self, text: str, profile: CanonicalProfile

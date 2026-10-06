@@ -65,6 +65,8 @@ class Job(Base):
     publication_metadata: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
     job_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(64), nullable=False, default="DISCOVERED")
+    # Faz 3: kesif her goruste gunceller; son N gundur gorulmeyen STALE olur (silinmez).
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     raw_data: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
