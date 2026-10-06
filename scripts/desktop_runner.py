@@ -16,6 +16,14 @@ from playwright.async_api import Page, async_playwright
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from desktop_runner.config import DesktopSettings  # noqa: E402
 from desktop_runner.assisted import run_assisted  # noqa: E402
+from desktop_runner.diagnostics import (  # noqa: E402
+    finish_run as _finish_run_report,
+    host_of as _host_of,
+    new_report as _new_report,
+    record_field as _record_field,
+    record_step as _record_step,
+    start_run as _start_run_report,
+)
 from desktop_runner.documents import (  # noqa: E402
     cleanup_upload_files,
     prepare_upload_files,
@@ -150,6 +158,39 @@ async def upload_documents(page: Page, document_paths: dict) -> None:
                 await field.set_input_files(str(document_path))
 
 
+async def _begin_run_report(browser_context):
+    """Kosu raporu + izi baslatir; basarisizsa None (akis asla durmaz)."""
+    try:
+        return await _start_run_report(browser_context)
+    except Exception as exc:
+        logger.warning("Kosu raporu baslatilamadi: %s", exc)
+        return None
+
+
+def _summary_report(app_url: str, summary) -> dict:
+    """AssistSummary -> report.json sozlugu (anahtar/sonuc/sebep; DEGER YOK)."""
+    report = _new_report(ats="generic", host=_host_of(app_url or ""))
+    report["handoffs"] = int(getattr(summary, "handoffs", 0) or 0)
+    timed_out = getattr(summary, "timed_out", None)
+    report["timed_out"] = str(timed_out) if timed_out else None
+    _record_step(report, "run_assisted", ok=timed_out is None,
+                 reason=str(timed_out) if timed_out else None)
+    for key in getattr(summary, "filled", []) or []:
+        _record_field(report, str(key), "filled")
+    for key in getattr(summary, "unverified", []) or []:
+        _record_field(report, str(key), "unverified", reason="requires_human")
+    return report
+
+
+async def _end_run_report(browser_context, run_dir, report: dict) -> None:
+    if run_dir is None:
+        return
+    try:
+        await _finish_run_report(browser_context, run_dir, report)
+    except Exception as exc:
+        logger.warning("Kosu raporu yazilamadi: %s", exc)
+
+
 def list_application_ids(statuses: list[str], limit: int) -> list[str]:
     """Verilen durumlardaki başvuru id'lerini API'den toplar (tek tek id gerekmez)."""
     import json as _json
@@ -208,18 +249,33 @@ async def run_many(application_ids: list[str], *, fresh_profile: bool = False) -
                     logger.error("(%d/%d) atlandi: %s", index, len(application_ids), exc)
                     continue
                 prepared = prepare_upload_files(API_BASE_URL, _api_key_from_env(), application_id)
+                run_dir = await _begin_run_report(browser_context)
                 try:
-                    page, _summary = await run_assisted(
-                        browser_context,
-                        context["application_url"],
-                        profile,
-                        context["verified_answers"],
-                        settings,
-                        prepared,
-                    )
+                    try:
+                        page, _summary = await run_assisted(
+                            browser_context,
+                            context["application_url"],
+                            profile,
+                            context["verified_answers"],
+                            settings,
+                            prepared,
+                        )
+                    except Exception as exc:
+                        failed = _new_report(
+                            ats="generic",
+                            host=_host_of(context.get("application_url", "")),
+                        )
+                        _record_step(failed, "run_assisted", ok=False,
+                                     reason=type(exc).__name__)
+                        await _end_run_report(browser_context, run_dir, failed)
+                        raise
                     await page.screenshot(
                         path=str(PROJECT_ROOT / "browser-traces" / f"{context['application_id']}_desktop_prepared.png"),
                         full_page=True,
+                    )
+                    await _end_run_report(
+                        browser_context, run_dir,
+                        _summary_report(context["application_url"], _summary),
                     )
                     logger.info(
                         "(%d/%d) %s — %s hazir. Kalan alanlari tamamlayip gonderin; "
@@ -268,13 +324,26 @@ async def run(application_uri: str, *, fresh_profile: bool = False) -> None:
             str(user_data_dir),
             **launch_kwargs,
         )
-        page, _summary = await run_assisted(
-            browser_context,
-            context["application_url"],
-            profile,
-            context["verified_answers"],
-            settings,
-            prepared,
+        run_dir = await _begin_run_report(browser_context)
+        try:
+            page, _summary = await run_assisted(
+                browser_context,
+                context["application_url"],
+                profile,
+                context["verified_answers"],
+                settings,
+                prepared,
+            )
+        except Exception as exc:
+            failed = _new_report(
+                ats="generic", host=_host_of(context.get("application_url", ""))
+            )
+            _record_step(failed, "run_assisted", ok=False, reason=type(exc).__name__)
+            await _end_run_report(browser_context, run_dir, failed)
+            raise
+        await _end_run_report(
+            browser_context, run_dir,
+            _summary_report(context["application_url"], _summary),
         )
         await page.screenshot(
             path=str(PROJECT_ROOT / "browser-traces" / f"{context['application_id']}_desktop_prepared.png"),
