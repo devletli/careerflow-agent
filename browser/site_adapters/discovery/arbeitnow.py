@@ -1,10 +1,13 @@
+import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
 
 from browser.site_adapters.discovery.base import JobSourceAdapter
+from browser.site_adapters.discovery.pagination import fetch_with_backoff, time_deadline
 from browser.site_adapters.discovery.text_utils import html_to_text
 from shared.contracts.fingerprint import compute_job_fingerprint
 from shared.contracts.models import NormalizedJob
@@ -63,8 +66,16 @@ class ArbeitnowAdapter(JobSourceAdapter):
     across a bounded number of result pages.
     """
 
-    def __init__(self, max_pages: int = 5, transport: Optional[httpx.AsyncBaseTransport] = None):
-        self.max_pages = max_pages
+    def __init__(
+        self,
+        max_pages: Optional[int] = None,
+        page_delay: Optional[float] = None,
+        transport: Optional[httpx.AsyncBaseTransport] = None,
+    ):
+        from shared.config import settings
+
+        self.max_pages = max_pages if max_pages is not None else settings.DISCOVERY_MAX_PAGES_PER_SOURCE
+        self.page_delay = page_delay if page_delay is not None else settings.DISCOVERY_PAGE_DELAY_SECONDS
         self._transport = transport  # injectable for tests (httpx.MockTransport)
 
     @property
@@ -80,13 +91,17 @@ class ArbeitnowAdapter(JobSourceAdapter):
     ) -> List[NormalizedJob]:
         discovered: List[NormalizedJob] = []
         seen_slugs = set()
+        max_pages = int(kwargs.get("max_pages", self.max_pages))
+        page_delay = float(kwargs.get("page_delay", self.page_delay))
+        deadline = kwargs.get("deadline", None)
+        deadline = deadline if deadline is not None else time_deadline(kwargs.get("time_budget"))
 
         async with httpx.AsyncClient(timeout=15.0, transport=self._transport) as client:
-            for page in range(1, self.max_pages + 1):
-                if len(discovered) >= limit:
+            for page in range(1, max_pages + 1):
+                if len(discovered) >= limit or time.monotonic() > deadline:
                     break
                 try:
-                    res = await client.get(ARBEITNOW_API_URL, params={"page": page})
+                    res = await fetch_with_backoff(client, "GET", ARBEITNOW_API_URL, params={"page": page})
                     if res.status_code != 200:
                         logger.warning("Arbeitnow page %s returned HTTP %s", page, res.status_code)
                         break
@@ -118,5 +133,6 @@ class ArbeitnowAdapter(JobSourceAdapter):
 
                 if not (payload.get("links") or {}).get("next"):
                     break
+                await asyncio.sleep(page_delay)
 
         return discovered

@@ -1,8 +1,12 @@
+import asyncio
 import logging
+import time
 from typing import Any, List, Optional
+
 import httpx
 
 from browser.site_adapters.discovery.base import JobSourceAdapter
+from browser.site_adapters.discovery.pagination import fetch_with_backoff, time_deadline
 from shared.contracts.models import NormalizedJob
 from shared.contracts.fingerprint import compute_job_fingerprint
 
@@ -12,6 +16,16 @@ DEFAULT_ASHBY_BOARDS = ["openai", "replicate", "postman"]
 
 
 class AshbyAdapter(JobSourceAdapter):
+    def __init__(
+        self,
+        page_delay: Optional[float] = None,
+        transport: Optional[httpx.AsyncBaseTransport] = None,
+    ):
+        from shared.config import settings
+
+        self.page_delay = page_delay if page_delay is not None else settings.DISCOVERY_PAGE_DELAY_SECONDS
+        self._transport = transport
+
     @property
     def source_name(self) -> str:
         return "ashby"
@@ -26,15 +40,18 @@ class AshbyAdapter(JobSourceAdapter):
     ) -> List[NormalizedJob]:
         target_boards = boards or DEFAULT_ASHBY_BOARDS
         discovered: List[NormalizedJob] = []
+        page_delay = float(kwargs.get("page_delay", self.page_delay))
+        deadline = kwargs.get("deadline", None)
+        deadline = deadline if deadline is not None else time_deadline(kwargs.get("time_budget"))
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, transport=self._transport) as client:
             for board in target_boards:
-                if len(discovered) >= limit:
+                if len(discovered) >= limit or time.monotonic() > deadline:
                     break
 
                 url = f"https://api.ashbyhq.com/posting-api/job-board/{board}"
                 try:
-                    res = await client.get(url)
+                    res = await fetch_with_backoff(client, "GET", url)
                     if res.status_code != 200:
                         continue
 
@@ -72,5 +89,6 @@ class AshbyAdapter(JobSourceAdapter):
                             break
                 except Exception as e:
                     logger.debug(f"Error discovering Ashby jobs for {board}: {e}")
+                await asyncio.sleep(page_delay)
 
         return discovered

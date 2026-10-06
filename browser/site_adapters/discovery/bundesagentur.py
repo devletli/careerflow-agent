@@ -1,11 +1,13 @@
 import asyncio
 import base64
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 import httpx
 
 from browser.site_adapters.discovery.base import JobSourceAdapter
+from browser.site_adapters.discovery.pagination import fetch_with_backoff, time_deadline
 from browser.site_adapters.discovery.text_utils import html_to_text
 from shared.contracts.fingerprint import compute_job_fingerprint
 from shared.contracts.models import NormalizedJob
@@ -75,16 +77,22 @@ class BundesagenturAdapter(JobSourceAdapter):
 
     def __init__(
         self,
-        max_pages: int = 5,
+        max_pages: Optional[int] = None,
         fetch_details: bool = True,
-        detail_concurrency: int = 5,
+        detail_concurrency: Optional[int] = None,
         published_within_days: Optional[int] = 30,
         radius_km: Optional[int] = 25,
+        page_delay: Optional[float] = None,
         transport: Optional[httpx.AsyncBaseTransport] = None,
     ):
-        self.max_pages = max_pages
+        from shared.config import settings
+
+        self.max_pages = max_pages if max_pages is not None else settings.DISCOVERY_MAX_PAGES_PER_SOURCE
         self.fetch_details = fetch_details
-        self.detail_concurrency = detail_concurrency
+        self.detail_concurrency = (
+            detail_concurrency if detail_concurrency is not None else settings.DISCOVERY_DETAIL_CONCURRENCY
+        )
+        self.page_delay = page_delay if page_delay is not None else settings.DISCOVERY_PAGE_DELAY_SECONDS
         self.published_within_days = published_within_days
         self.radius_km = radius_km
         self._transport = transport  # injectable for tests (httpx.MockTransport)
@@ -115,6 +123,10 @@ class BundesagenturAdapter(JobSourceAdapter):
         **kwargs: Any,
     ) -> List[NormalizedJob]:
         fetch_details = kwargs.get("fetch_details", self.fetch_details)
+        max_pages = int(kwargs.get("max_pages", self.max_pages))
+        page_delay = float(kwargs.get("page_delay", self.page_delay))
+        deadline = kwargs.get("deadline", None)
+        deadline = deadline if deadline is not None else time_deadline(kwargs.get("time_budget"))
         page_size = max(1, min(limit, 100))
         hits: List[Dict[str, Any]] = []
         seen = set()
@@ -130,8 +142,8 @@ class BundesagenturAdapter(JobSourceAdapter):
             "Referer": "https://www.arbeitsagentur.de/",
         }
         async with httpx.AsyncClient(timeout=15.0, headers=headers, transport=self._transport) as client:
-            for page in range(1, self.max_pages + 1):
-                if len(hits) >= limit:
+            for page in range(1, max_pages + 1):
+                if len(hits) >= limit or time.monotonic() > deadline:
                     break
                 params: Dict[str, Any] = {"angebotsart": 1, "page": page, "size": page_size}
                 if query:
@@ -144,7 +156,7 @@ class BundesagenturAdapter(JobSourceAdapter):
                     params["veroeffentlichtseit"] = self.published_within_days
 
                 try:
-                    res = await client.get(f"{BA_BASE_URL}/jobs", params=params)
+                    res = await fetch_with_backoff(client, "GET", f"{BA_BASE_URL}/jobs", params=params)
                     if res.status_code != 200:
                         logger.warning("Bundesagentur search returned HTTP %s", res.status_code)
                         break
@@ -163,6 +175,7 @@ class BundesagenturAdapter(JobSourceAdapter):
 
                 if len(items) < page_size:
                     break
+                await asyncio.sleep(page_delay)
 
             descriptions: Dict[str, Optional[str]] = {}
             if fetch_details and hits:

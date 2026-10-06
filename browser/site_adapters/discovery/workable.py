@@ -1,8 +1,12 @@
+import asyncio
 import logging
+import time
 from typing import Any, List, Optional
+
 import httpx
 
 from browser.site_adapters.discovery.base import JobSourceAdapter
+from browser.site_adapters.discovery.pagination import fetch_with_backoff, time_deadline
 from shared.contracts.models import NormalizedJob
 from shared.contracts.fingerprint import compute_job_fingerprint
 
@@ -21,6 +25,16 @@ DEFAULT_WORKABLE_ACCOUNTS = [
 
 
 class WorkableAdapter(JobSourceAdapter):
+    def __init__(
+        self,
+        page_delay: Optional[float] = None,
+        transport: Optional[httpx.AsyncBaseTransport] = None,
+    ):
+        from shared.config import settings
+
+        self.page_delay = page_delay if page_delay is not None else settings.DISCOVERY_PAGE_DELAY_SECONDS
+        self._transport = transport
+
     @property
     def source_name(self) -> str:
         return "workable"
@@ -40,15 +54,18 @@ class WorkableAdapter(JobSourceAdapter):
         """
         target_accounts = accounts or DEFAULT_WORKABLE_ACCOUNTS
         discovered: List[NormalizedJob] = []
+        page_delay = float(kwargs.get("page_delay", self.page_delay))
+        deadline = kwargs.get("deadline", None)
+        deadline = deadline if deadline is not None else time_deadline(kwargs.get("time_budget"))
 
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "application/json",
         }
 
-        async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
+        async with httpx.AsyncClient(timeout=10.0, headers=headers, transport=self._transport) as client:
             for account in target_accounts:
-                if len(discovered) >= limit:
+                if len(discovered) >= limit or time.monotonic() > deadline:
                     break
 
                 api_url = f"https://apply.workable.com/api/v3/accounts/{account}/jobs"
@@ -60,7 +77,7 @@ class WorkableAdapter(JobSourceAdapter):
                 }
 
                 try:
-                    res = await client.post(api_url, json=payload)
+                    res = await fetch_with_backoff(client, "POST", api_url, json=payload)
                     if res.status_code != 200:
                         logger.debug(f"Workable API for {account} returned status {res.status_code}")
                         continue
@@ -111,5 +128,6 @@ class WorkableAdapter(JobSourceAdapter):
 
                 except Exception as e:
                     logger.debug(f"Error discovering Workable jobs for account {account}: {e}")
+                await asyncio.sleep(page_delay)
 
         return discovered

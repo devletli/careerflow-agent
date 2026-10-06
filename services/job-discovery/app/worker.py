@@ -1,12 +1,13 @@
 import argparse
 import asyncio
 import logging
+import math
 import signal
 import time
 from uuid import uuid4
 
 from shared.config import settings
-from shared.contracts.events import JobDiscoveredEvent, JobNormalizedEvent
+from shared.contracts.events import DiscoverySummaryEvent, JobDiscoveredEvent, JobNormalizedEvent
 from shared.contracts.models import PipelineStatus
 from shared.db.models import Job
 from shared.db.session import get_session, check_db_health
@@ -14,6 +15,7 @@ from shared.infra.redis_bus import RedisEventBus
 from shared.infra.heartbeat import beat
 from shared.infra.jsonlog import correlation, install_json_logging
 from shared.profile.loader import load_canonical_profile
+from browser.site_adapters.discovery.prefilter import passes_prefilter
 from browser.site_adapters.discovery import (
     WorkableAdapter,
     GreenhouseAdapter,
@@ -76,31 +78,95 @@ class JobDiscoveryWorker:
     async def run_discovery_cycle(self) -> int:
         """Runs a single pass of job discovery across all configured sources."""
         logger.info("Starting job discovery cycle...")
-        total_discovered = 0
+        started = time.monotonic()
+        deadline = started + settings.DISCOVERY_TIME_BUDGET_SECONDS
         total_new = 0
+        sources: dict = {}
 
         preferred_roles = self.profile.preferences.get("preferred_roles", ["AI Engineer", "DevOps"])
+        roles = preferred_roles[:3]
         # First configured location (e.g. "Berlin"); adapters without location support ignore it.
         locations = self.profile.preferences.get("locations") or []
         location = locations[0] if locations else None
+        per_role_limit = max(1, math.ceil(settings.DISCOVERY_MAX_JOBS_PER_SOURCE / max(1, len(roles))))
+        prefs = self.profile.preferences
+        budget_exceeded = False
 
         for adapter in self.adapters:
             logger.info(f"Running discovery with adapter: {adapter.source_name}")
+            stats = {"found": 0, "prefiltered_out": 0, "new": 0, "duplicates": 0}
+            src_started = time.monotonic()
             try:
-                for role in preferred_roles[:3]:  # query top preferred roles
-                    jobs = await adapter.discover_jobs(query=role, location=location, limit=100)
-                    total_discovered += len(jobs)
-
+                for role in roles:  # query top preferred roles
+                    if time.monotonic() > deadline:
+                        budget_exceeded = True
+                        break
+                    jobs = await adapter.discover_jobs(
+                        query=role,
+                        location=location,
+                        limit=per_role_limit,
+                        max_pages=settings.DISCOVERY_MAX_PAGES_PER_SOURCE,
+                        page_delay=settings.DISCOVERY_PAGE_DELAY_SECONDS,
+                        deadline=deadline,
+                    )
                     for job_model in jobs:
+                        if time.monotonic() > deadline:
+                            budget_exceeded = True
+                            break
+                        stats["found"] += 1
+                        passed, reason = passes_prefilter(
+                            title=job_model.title,
+                            location=job_model.location,
+                            remote_status=job_model.remote_status,
+                            text=f"{job_model.description or ''} {job_model.company or ''}",
+                            preferences=prefs,
+                        )
+                        if not passed:
+                            stats["prefiltered_out"] += 1
+                            logger.debug(
+                                "Prefiltered out %s - %s (%s): %s",
+                                job_model.company, job_model.title, job_model.source, reason,
+                            )
+                            continue
                         is_new = await self._persist_and_emit(job_model)
                         if is_new:
+                            stats["new"] += 1
                             total_new += 1
+                        else:
+                            stats["duplicates"] += 1
 
             except Exception as e:
                 logger.error(f"Error in adapter {adapter.source_name}: {e}", exc_info=True)
 
+            stats["duration_s"] = round(time.monotonic() - src_started, 1)
+            sources[adapter.source_name] = stats
+
+        duration_s = round(time.monotonic() - started, 1)
+        if time.monotonic() > deadline:
+            budget_exceeded = True
+        summary = DiscoverySummaryEvent(
+            correlation_id=f"disc-{uuid4().hex[:8]}",
+            entity_id="discovery",
+            payload={
+                "sources": sources,
+                "total_new": total_new,
+                "duration_s": duration_s,
+                "budget_exceeded": budget_exceeded,
+                "budgets": {
+                    "max_jobs_per_source": settings.DISCOVERY_MAX_JOBS_PER_SOURCE,
+                    "max_pages_per_source": settings.DISCOVERY_MAX_PAGES_PER_SOURCE,
+                    "time_budget_s": settings.DISCOVERY_TIME_BUDGET_SECONDS,
+                },
+            },
+        )
+        try:
+            await self.bus.publish(summary)
+        except Exception as e:
+            logger.warning("Discovery summary publish failed: %s", e)
         logger.info(
-            f"Discovery cycle complete. Discovered {total_discovered} jobs ({total_new} newly ingested)."
+            "Discovery cycle complete. New %d in %.1fs (budget_exceeded=%s): %s",
+            total_new, duration_s, budget_exceeded,
+            {k: (v["found"], v["new"]) for k, v in sources.items()},
         )
         return total_new
 
