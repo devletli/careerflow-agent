@@ -181,9 +181,9 @@ def test_update_and_delete_interview(client, seed):
 
 
 def test_application_filters_lifecycle_and_overdue(client, seed):
-    by_life = client.get("/api/v1/applications?lifecycle_status=applied").json()
+    by_life = client.get("/api/v1/applications?lifecycle_status=applied").json()["items"]
     assert {a["id"] for a in by_life} == {seed["app"]}
-    overdue = client.get("/api/v1/applications?overdue=true").json()
+    overdue = client.get("/api/v1/applications?overdue=true").json()["items"]
     assert {a["id"] for a in overdue} == {seed["other"]}
     assert overdue[0]["next_action"] == "Recruiter'a geri dön"
 

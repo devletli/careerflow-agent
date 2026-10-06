@@ -1,6 +1,7 @@
 """Documents: list, private file streaming, legacy download, backfill."""
 import asyncio
 import re
+from datetime import datetime
 from io import BytesIO
 from pathlib import PurePosixPath
 from typing import Any, Optional
@@ -8,10 +9,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import desc, select
+from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import logger, minio_client
+from app.pagination import decode_cursor, encode_cursor, escape_like
 from app.security import require_api_key
 from shared.db.models import Application, ApplicationDocument, Document, Job
 from shared.db.session import get_db_session
@@ -25,51 +27,105 @@ router = APIRouter(
 
 @router.get("")
 async def list_documents(
-    limit: int = Query(default=100, le=100),
-    offset: int = 0,
+    limit: int = Query(default=50, ge=1, le=50),
+    cursor: Optional[str] = Query(default=None, description="Keyset cursor (created_at|id)"),
     q: Optional[str] = Query(default=None, description="Search company/title/type"),
     type: Optional[str] = Query(default=None, description="Filter by document type (cv, cover_letter)"),
     application_id: Optional[UUID] = Query(default=None, description="Filter by linked application"),
     session: AsyncSession = Depends(get_db_session),
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
+    """En-yeni-üste, keyset-sayfalamalı belge listesi.
+
+    Yalnızca her (application-or-job, tür, dil) ailesinin SON sürümü
+    döner: `row_number() over (partition by
+    coalesce(application_id, job_id), type, language order by version
+    desc, created_at desc)`. Dil partition'a dahildir (TR ve EN CV
+    birbirini ezmez). Cursor ikilidir (created_at, id); OR zinciriyle
+    ilerler. Yanıt: {items, next_cursor, total}.
+    """
+    latest = (
+        select(
+            Document.id,
+            func.row_number()
+            .over(
+                partition_by=(
+                    func.coalesce(Document.application_id, Document.job_id),
+                    Document.type,
+                    Document.language,
+                ),
+                order_by=(Document.version.desc(), Document.created_at.desc()),
+            )
+            .label("rn"),
+        ).subquery()
+    )
     stmt = (
         select(Document, Job.company, Job.title, Application.id, Application.status)
         .join(Job, Job.id == Document.job_id)
         .outerjoin(Application, Application.id == Document.application_id)
-        .order_by(desc(Document.created_at))
-        .offset(offset)
-        .limit(limit)
+        .join(latest, latest.c.id == Document.id)
+        .where(latest.c.rn == 1)
     )
-    if q:
-        like = f"%{q}%"
+    count_stmt = (
+        select(func.count(Document.id))
+        .select_from(Document)
+        .join(Job, Job.id == Document.job_id)
+        .join(latest, latest.c.id == Document.id)
+        .where(latest.c.rn == 1)
+    )
+
+    def _apply_filters(s, for_counts: bool = False):  # noqa: ANN001, ANN202
+        if q:
+            like = f"%{escape_like(q)}%"
+            cond = (
+                (Job.company.ilike(like, escape="\\"))
+                | (Job.title.ilike(like, escape="\\"))
+                | (Document.type.ilike(like, escape="\\"))
+            )
+            s = s.where(cond)
+        if type:
+            s = s.where(Document.type == type)
+        if application_id is not None:
+            # Source of truth is application_documents (a doc may be shared
+            # across apps); legacy documents.application_id holds only the last
+            # link, so match either.
+            linked_ids = select(ApplicationDocument.document_id).where(
+                ApplicationDocument.application_id == application_id
+            )
+            s = s.where(
+                (Document.application_id == application_id) | (Document.id.in_(linked_ids))
+            )
+        return s
+
+    stmt = _apply_filters(stmt)
+    count_stmt = _apply_filters(count_stmt, for_counts=True)
+    if cursor:
+        parts = decode_cursor(cursor, 2)
+        try:
+            c0 = datetime.fromisoformat(str(parts[0]))
+            i0 = UUID(str(parts[1]))
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail="Invalid cursor.") from exc
         stmt = stmt.where(
-            (Job.company.ilike(like)) | (Job.title.ilike(like)) | (Document.type.ilike(like))
+            or_(
+                Document.created_at < c0,
+                and_(Document.created_at == c0, Document.id > i0),
+            )
         )
-    if type:
-        stmt = stmt.where(Document.type == type)
-    if application_id is not None:
-        # Source of truth is application_documents (a doc may be shared
-        # across apps); legacy documents.application_id holds only the last
-        # link, so match either.
-        linked_ids = select(ApplicationDocument.document_id).where(
-            ApplicationDocument.application_id == application_id
-        )
-        stmt = stmt.where(
-            (Document.application_id == application_id) | (Document.id.in_(linked_ids))
-        )
+    stmt = stmt.order_by(desc(Document.created_at), Document.id.asc()).limit(limit + 1)
     res = await session.execute(stmt)
     rows = res.all()
+    page, has_more = rows[:limit], len(rows) > limit
 
     # Latest = highest version (then newest) per (job, type, language).
     newest: dict[tuple[Any, Any, Any], Document] = {}
-    for document, *_ in rows:
+    for document, *_ in page:
         key = (document.job_id, document.type, document.language)
         current = newest.get(key)
         if current is None or (document.version, document.created_at) > (current.version, current.created_at):
             newest[key] = document
     latest_ids = {d.id for d in newest.values()}
 
-    return [
+    items = [
         {
             "id": str(document.id),
             "job_id": str(document.job_id),
@@ -90,8 +146,18 @@ async def list_documents(
             "view_url": f"/api/v1/documents/{document.id}/file?download=0",
             "download_url": f"/api/v1/documents/{document.id}/file?download=1",
         }
-        for document, company, job_title, app_id, app_status in rows
+        for document, company, job_title, app_id, app_status in page
     ]
+    if has_more and page:
+        last_doc = page[-1][0]
+        next_cursor: Optional[str] = encode_cursor(
+            last_doc.created_at.isoformat() if last_doc.created_at else None,
+            str(last_doc.id),
+        )
+    else:
+        next_cursor = None
+    total = (await session.execute(count_stmt)).scalar() or 0
+    return {"items": items, "next_cursor": next_cursor, "total": total}
 
 
 async def _stream_document_bytes(

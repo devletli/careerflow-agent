@@ -196,10 +196,10 @@ def test_delete_application_success_unlinks_docs(client, seed):
     assert client.delete(f"/api/v1/applications/{seed['app1']}").status_code == 404
     # job survives
     assert client.get(f"/api/v1/applications/{seed['app_other']}").status_code == 200
-    # linked doc unlinked, not deleted
-    docs = client.get("/api/v1/documents?limit=100").json()
+    # linked doc unlinked, not deleted: SON surum (doc2) listede kalir.
+    docs = client.get("/api/v1/documents?limit=50").json()["items"]
     ids = {d["id"] for d in docs}
-    assert seed["doc1"] in ids
+    assert seed["doc2"] in ids
 
 
 def test_delete_application_does_not_delete_job(client, seed):
@@ -214,7 +214,7 @@ def test_delete_document_success_only_requested_version(client, seed):
     assert r.status_code == 200, r.text
     assert r.json() == {"id": seed["doc1"], "deleted": True}
     rm.assert_called_once_with("key-doc1", "docs")
-    docs = client.get("/api/v1/documents?limit=100").json()
+    docs = client.get("/api/v1/documents?limit=50").json()["items"]
     ids = {d["id"] for d in docs}
     assert seed["doc1"] not in ids
     assert seed["doc2"] in ids  # other version preserved
@@ -238,7 +238,7 @@ def test_delete_job_success_cascades_and_cleans_minio(client, seed):
     assert client.delete(f"/api/v1/documents/{seed['doc2']}").status_code == 404
     jobs = client.get("/api/v1/jobs?limit=100").json()["items"]
     assert seed["job2"] in {j["id"] for j in jobs}
-    docs = client.get("/api/v1/documents?limit=100").json()
+    docs = client.get("/api/v1/documents?limit=50").json()["items"]
     assert seed["doc_other"] in {d["id"] for d in docs}
 
 

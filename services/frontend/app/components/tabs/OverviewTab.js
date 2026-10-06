@@ -21,7 +21,7 @@ function FollowUpPanel({ applications }) {
     // still surface here.
     Promise.all([
       fetchJson("/api/v1/interviews?upcoming=true&limit=20").catch(() => []),
-      fetchJson("/api/v1/applications?overdue=true&limit=100").catch(() => []),
+      fetchJson("/api/v1/applications?overdue=true&limit=50").catch(() => []),
     ]).then(([ivRows, overdueRows]) => {
       if (cancelled) return;
       setUpcoming(ivRows || []);

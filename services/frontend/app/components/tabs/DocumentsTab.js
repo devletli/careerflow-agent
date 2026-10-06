@@ -4,7 +4,7 @@ import { StatusPill, STRINGS } from "../../lib";
 import { SearchBar, Toolbar } from "../controls";
 import { docTypeLabel } from "../shared";
 
-export default function DocumentsTab({ documents, query, onQueryChange, error, loading, refresh, onDelete, deletingId }) {
+export default function DocumentsTab({ documents, total, query, onQueryChange, error, loading, refresh, onNext, onPrev, hasNext, hasPrev, page, onDelete, deletingId }) {
   // Liste: job+tur basina SON surum; eski surumler yalnizca detay sayfasinda.
   // Arama backend'de (?q=).
   const rows = (documents || []).filter((d) => d.is_latest);
@@ -77,6 +77,15 @@ export default function DocumentsTab({ documents, query, onQueryChange, error, l
           )}
         </tbody>
       </table>
+      <div className="toolbar" style={{ marginTop: 8 }}>
+        <button className="refresh-btn" onClick={onPrev} disabled={!hasPrev}>
+          {STRINGS.prevPage}
+        </button>
+        <span className="muted">{(STRINGS.pageIndicator || "Page {page}").replace("{page}", page || 1)}{typeof total === "number" ? ` • ${total}` : ""}</span>
+        <button className="refresh-btn" onClick={onNext} disabled={!hasNext}>
+          {STRINGS.nextPage}
+        </button>
+      </div>
     </div>
   );
 }

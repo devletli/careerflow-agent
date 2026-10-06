@@ -18,6 +18,7 @@ import {
   usePolling,
   useTheme,
 } from "./hooks/usePolling";
+import { usePagedList } from "./hooks/usePagedList";
 
 function tabFromHash() {
   if (typeof window === "undefined") return "Overview";
@@ -155,10 +156,32 @@ export default function Home() {
     setCursorStack((s) => s.slice(0, -1));
     fetchJobsPage(prev);
   }, [cursorStack, fetchJobsPage]);
-  const applicationsQ = usePolling(
-    `/api/v1/applications?limit=100${qParam(dAppsQuery)}${appsStatusParam}${appsScoreParam}`
+  const applicationsQ = usePagedList(
+    useCallback(
+      async (cursor) => {
+        let url = `/api/v1/applications?limit=50${qParam(dAppsQuery)}${appsStatusParam}${appsScoreParam}`;
+        if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
+        const res = await fetchJson(url);
+        if (Array.isArray(res)) return { items: res, next_cursor: null, total: res.length };
+        return { items: res.items || [], next_cursor: res.next_cursor ?? null, total: res.total ?? 0 };
+      },
+      [dAppsQuery, appsStatusParam, appsScoreParam]
+    ),
+    `apps:${dAppsQuery}:${appsStatus}:${appsMinScore}`
   );
-  const documentsQ = usePolling(`/api/v1/documents?limit=100${qParam(dDocsQuery)}`);
+  const documentsQ = usePagedList(
+    useCallback(
+      async (cursor) => {
+        let url = `/api/v1/documents?limit=50${qParam(dDocsQuery)}`;
+        if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
+        const res = await fetchJson(url);
+        if (Array.isArray(res)) return { items: res, next_cursor: null, total: res.length };
+        return { items: res.items || [], next_cursor: res.next_cursor ?? null, total: res.total ?? 0 };
+      },
+      [dDocsQuery]
+    ),
+    `docs:${dDocsQuery}`
+  );
   const eventsQ = usePolling(`/api/v1/events?limit=50${qParam(dEventsQuery)}`);
 
   const runAction = useCallback(async (action) => {
@@ -344,7 +367,7 @@ export default function Home() {
         <OverviewTab
           status={statusQ.data}
           jobs={jobsList}
-          applications={applicationsQ.data}
+          applications={applicationsQ.items}
           events={eventsQ.data}
           eventsLoading={eventsQ.loading}
           onRun={runAction}
@@ -384,16 +407,22 @@ export default function Home() {
       )}
       {tab === "Applications" && (
         <ApplicationsTab
-          applications={applicationsQ.data}
+          applications={applicationsQ.items}
+          total={applicationsQ.total}
           query={appsQuery}
           onQueryChange={setAppsQuery}
           statusFilter={appsStatus}
           onStatusChange={setAppsStatus}
           minScore={appsMinScore}
           onMinScoreChange={setAppsMinScore}
-          error={applicationsQ.error}
-          loading={applicationsQ.loading}
+          error={applicationsQ.error?.message || applicationsQ.error}
+          loading={!applicationsQ.items?.length && !applicationsQ.error}
           refresh={applicationsQ.refresh}
+          onNext={applicationsQ.next}
+          onPrev={applicationsQ.prev}
+          hasNext={Boolean(applicationsQ.next_cursor)}
+          hasPrev={applicationsQ.page > 1}
+          page={applicationsQ.page}
           onExecute={executeApplication}
           busyId={runningAction || deletingId}
           onDelete={(a) => requestDelete("application", a)}
@@ -401,12 +430,18 @@ export default function Home() {
       )}
       {tab === "Documents" && (
         <DocumentsTab
-          documents={documentsQ.data}
+          documents={documentsQ.items}
+          total={documentsQ.total}
           query={docsQuery}
           onQueryChange={setDocsQuery}
-          error={documentsQ.error}
-          loading={documentsQ.loading}
+          error={documentsQ.error?.message || documentsQ.error}
+          loading={!documentsQ.items?.length && !documentsQ.error}
           refresh={documentsQ.refresh}
+          onNext={documentsQ.next}
+          onPrev={documentsQ.prev}
+          hasNext={Boolean(documentsQ.next_cursor)}
+          hasPrev={documentsQ.page > 1}
+          page={documentsQ.page}
           onDelete={(d) => requestDelete("document", d)}
           deletingId={deletingId}
         />

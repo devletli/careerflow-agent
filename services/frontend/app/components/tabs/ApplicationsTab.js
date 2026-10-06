@@ -5,7 +5,7 @@ import { formatDate, StatusPill, STRINGS } from "../../lib";
 import { distinctStatuses, SearchBar, Toolbar } from "../controls";
 import { DocBadges, UrlAddDialog } from "../shared";
 
-export default function ApplicationsTab({ applications, query, onQueryChange, statusFilter, onStatusChange, minScore, onMinScoreChange, error, loading, refresh, onExecute, busyId, onDelete }) {
+export default function ApplicationsTab({ applications, total, query, onQueryChange, statusFilter, onStatusChange, minScore, onMinScoreChange, error, loading, refresh, onNext, onPrev, hasNext, hasPrev, page, onExecute, busyId, onDelete }) {
   // Filtreleme backend'de (?q=&status=&min_score=); burada yalnızca yanıt render edilir.
   const rows = applications || [];
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -149,6 +149,15 @@ export default function ApplicationsTab({ applications, query, onQueryChange, st
           )}
         </tbody>
       </table>
+      <div className="toolbar" style={{ marginTop: 8 }}>
+        <button className="refresh-btn" onClick={onPrev} disabled={!hasPrev}>
+          {STRINGS.prevPage}
+        </button>
+        <span className="muted">{(STRINGS.pageIndicator || "Page {page}").replace("{page}", page || 1)}{typeof total === "number" ? ` • ${total}` : ""}</span>
+        <button className="refresh-btn" onClick={onNext} disabled={!hasNext}>
+          {STRINGS.nextPage}
+        </button>
+      </div>
       <UrlAddDialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}

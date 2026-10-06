@@ -1,11 +1,13 @@
 """Applications: liste/detay (salt okunur merkez kayit gorunumleri)."""
+from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
-from sqlalchemy import desc, select
+from sqlalchemy import and_, case, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.pagination import decode_cursor, encode_cursor, escape_like
 from app.security import require_api_key
 from shared.db.models import (
     Application,
@@ -45,6 +47,20 @@ async def _attached_docs_map(
 def _iso(value: Any) -> Optional[str]:
     return value.isoformat() if value is not None else None
 
+
+def _rank_of(status: str) -> int:
+    if status in ("REQUIRES_HUMAN", "FAILED", "BLOCKED"):
+        return 0
+    if status in ("READY_TO_SUBMIT", "READY_TO_APPLY"):
+        return 1
+    if status == "CREATED":
+        return 2
+    if status == "RUNNING":
+        return 3
+    if status == "SUBMITTED":
+        return 4
+    return 5
+
 router = APIRouter(
     prefix="/api/v1/applications",
     tags=["applications"],
@@ -54,52 +70,115 @@ router = APIRouter(
 
 @router.get("")
 async def list_applications(
-    limit: int = Query(default=100, le=100),
-    offset: int = 0,
+    limit: int = Query(default=50, ge=1, le=50),
+    cursor: Optional[str] = Query(default=None, description="Keyset cursor (rank|score|updated_at|id)"),
     q: Optional[str] = Query(default=None, description="Search company/title/URL"),
     status: Optional[str] = Query(default=None, description="Filter by application status"),
     lifecycle_status: Optional[str] = Query(default=None, description="Filter by lifecycle status"),
     overdue: Optional[bool] = Query(default=None, description="Only rows with next_action_due_at in the past"),
     min_score: Optional[float] = Query(default=None, description="Minimum match score"),
     session: AsyncSession = Depends(get_db_session),
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
+    """Müdahale-öncelikli, keyset-sayfalamalı başvuru listesi.
+
+    Varsayılan sıra: "seni bekleyenler" (REQUIRES_HUMAN, FAILED, BLOCKED)
+    önce, sonra READY_TO_SUBMIT, CREATED, RUNNING, SUBMITTED; her grup
+    içinde skor DESC, updated_at DESC, id ASC. Cursor dörtlüdür
+    (rank, score, updated_at, id); karışık ASC/DESC yönler için tuple
+    karşılaştırması değil OR zinciri kullanılır. Yanıtta durum sayaçları
+    (`status_counts`) da döner. Yanıt: {items, next_cursor, total,
+    status_counts}.
+    """
     match_score = (
         select(JobMatch.overall_score)
         .where(JobMatch.job_id == Application.job_id)
         .correlate(Application)
         .scalar_subquery()
     )
-    stmt = (
-        select(Application, Job.company, Job.title, Job.application_url, Job.url, match_score)
-        .join(Job, Job.id == Application.job_id)
-        .order_by(desc(Application.created_at))
-        .offset(offset)
-        .limit(limit)
+    rank = case(
+        (Application.status.in_(["REQUIRES_HUMAN", "FAILED", "BLOCKED"]), 0),
+        (Application.status.in_(["READY_TO_SUBMIT", "READY_TO_APPLY"]), 1),
+        (Application.status == "CREATED", 2),
+        (Application.status == "RUNNING", 3),
+        (Application.status == "SUBMITTED", 4),
+        else_=5,
     )
-    if q:
-        like = f"%{q}%"
-        stmt = stmt.where(
-            (Job.company.ilike(like)) | (Job.title.ilike(like)) | (Job.url.ilike(like))
-        )
-    if status:
-        stmt = stmt.where(Application.status == status)
-    if lifecycle_status:
-        stmt = stmt.where(Application.lifecycle_status == lifecycle_status.upper())
-    if overdue is True:
-        from datetime import datetime, timezone
+    score_col = func.coalesce(match_score, -1)
 
+    def _apply_filters(stmt, for_counts: bool = False):  # noqa: ANN001, ANN202
+        if q:
+            like = f"%{escape_like(q)}%"
+            stmt = stmt.where(
+                (Job.company.ilike(like, escape="\\"))
+                | (Job.title.ilike(like, escape="\\"))
+                | (Job.url.ilike(like, escape="\\"))
+            )
+        if status:
+            stmt = stmt.where(Application.status == status)
+        if lifecycle_status:
+            stmt = stmt.where(Application.lifecycle_status == lifecycle_status.upper())
+        if overdue is True:
+            from datetime import timezone
+
+            stmt = stmt.where(
+                Application.next_action_due_at.is_not(None),
+                Application.next_action_due_at < datetime.now(timezone.utc),
+            )
+        if min_score is not None:
+            stmt = stmt.where(match_score >= min_score)
+        return stmt
+
+    base = select(Application, Job.company, Job.title, Job.application_url, Job.url, match_score).join(
+        Job, Job.id == Application.job_id
+    )
+    base = _apply_filters(base)
+    count_stmt = (
+        select(func.count(Application.id))
+        .select_from(Application)
+        .join(Job, Job.id == Application.job_id)
+    )
+    count_stmt = _apply_filters(count_stmt, for_counts=True)
+    counts_stmt = (
+        select(Application.status, func.count(Application.id))
+        .select_from(Application)
+        .join(Job, Job.id == Application.job_id)
+    )
+    counts_stmt = _apply_filters(counts_stmt, for_counts=True)
+    counts_stmt = counts_stmt.group_by(Application.status)
+
+    stmt = base
+    if cursor:
+        parts = decode_cursor(cursor, 4)
+        try:
+            r0 = int(parts[0])
+            s0 = float(parts[1])
+            u0 = datetime.fromisoformat(str(parts[2]))
+            i0 = UUID(str(parts[3]))
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail="Invalid cursor.") from exc
         stmt = stmt.where(
-            Application.next_action_due_at.is_not(None),
-            Application.next_action_due_at < datetime.now(timezone.utc),
+            or_(
+                rank > r0,
+                and_(rank == r0, score_col < s0),
+                and_(rank == r0, score_col == s0, Application.updated_at < u0),
+                and_(
+                    rank == r0,
+                    score_col == s0,
+                    Application.updated_at == u0,
+                    Application.id > i0,
+                ),
+            )
         )
-    if min_score is not None:
-        stmt = stmt.where(match_score >= min_score)
+    stmt = stmt.order_by(rank.asc(), score_col.desc(), Application.updated_at.desc(), Application.id.asc()).limit(
+        limit + 1
+    )
     res = await session.execute(stmt)
     rows = res.all()
+    page, has_more = rows[:limit], len(rows) > limit
 
     # Document summary: authoritative per-application snapshot
     # (application_documents) + job-level latest for reference.
-    job_ids = list({a.job_id for a, *_ in rows})
+    job_ids = list({a.job_id for a, *_ in page})
     docs_by_job: dict[Any, list[Document]] = {}
     if job_ids:
         dres = await session.execute(
@@ -107,9 +186,9 @@ async def list_applications(
         )
         for d in dres.scalars().all():
             docs_by_job.setdefault(d.job_id, []).append(d)
-    attached_map = await _attached_docs_map(session, [a.id for a, *_ in rows])
+    attached_map = await _attached_docs_map(session, [a.id for a, *_ in page])
     out = []
-    for a, company, title, application_url, job_url, score in rows:
+    for a, company, title, application_url, job_url, score in page:
         docs = docs_by_job.get(a.job_id, [])
         latest: dict[tuple[Any, Any], Document] = {}
         for d in docs:
@@ -156,9 +235,23 @@ async def list_applications(
                     ],
                 },
                 "created_at": a.created_at.isoformat() if a.created_at else None,
+                "updated_at": a.updated_at.isoformat() if a.updated_at else None,
             }
         )
-    return out
+    if has_more and page:
+        last = page[-1][0]
+        last_score = page[-1][5] if page[-1][5] is not None else -1
+        next_cursor: Optional[str] = encode_cursor(
+            _rank_of(last.status),
+            float(last_score),
+            last.updated_at.isoformat() if last.updated_at else None,
+            str(last.id),
+        )
+    else:
+        next_cursor = None
+    total = (await session.execute(count_stmt)).scalar() or 0
+    status_counts = dict((await session.execute(counts_stmt)).all())
+    return {"items": out, "next_cursor": next_cursor, "total": total, "status_counts": status_counts}
 
 
 @router.get("/{application_id}/desktop-context")

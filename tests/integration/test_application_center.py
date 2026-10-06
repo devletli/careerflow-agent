@@ -157,23 +157,24 @@ def client(seed):
 
 def test_documents_list_marks_latest_and_orphan(client, seed):
     body = client.get("/api/v1/documents").json()
-    assert len(body) == 4
-    by_id = {d["id"]: d for d in body}
+    # Liste yalnizca SON surumleri doner: cv1 (v1) elenir, cv2 (v2) kalir.
+    assert body["total"] == 3
+    by_id = {d["id"]: d for d in body["items"]}
+    assert set(by_id) == {str(seed["cv2"]), str(seed["orphan"]), str(seed["other"])}
     assert by_id[str(seed["cv2"])]["is_latest"] is True
-    assert by_id[str(seed["cv1"])]["is_latest"] is False
     # Orphan renders with null application, no error.
     orphan = by_id[str(seed["orphan"])]
     assert orphan["application"] is None
     assert orphan["company"] == "Acme" and orphan["job_title"] == "DevOps Engineer"
-    linked = by_id[str(seed["cv1"])]
+    linked = by_id[str(seed["cv2"])]
     assert linked["application"] == {"id": str(seed["app1"]), "status": "READY_TO_APPLY"}
 
 
 def test_documents_filters(client, seed):
-    assert len(client.get("/api/v1/documents?type=cv").json()) == 3
-    assert len(client.get("/api/v1/documents", params={"application_id": str(seed["app1"])}).json()) == 2
-    assert len(client.get("/api/v1/documents?q=globex").json()) == 1
-    assert client.get("/api/v1/documents?q=nonexistent-xyz").json() == []
+    assert len(client.get("/api/v1/documents?type=cv").json()["items"]) == 2
+    assert len(client.get("/api/v1/documents", params={"application_id": str(seed["app1"])}).json()["items"]) == 1
+    assert len(client.get("/api/v1/documents?q=globex").json()["items"]) == 1
+    assert client.get("/api/v1/documents?q=nonexistent-xyz").json()["items"] == []
 
 
 def test_file_endpoint_inline_and_attachment(client, seed):
@@ -188,16 +189,16 @@ def test_file_endpoint_inline_and_attachment(client, seed):
 
 def test_applications_filters_and_document_summary(client, seed):
     body = client.get("/api/v1/applications").json()
-    assert len(body) == 1
-    app = body[0]
+    assert body["total"] == 1
+    app = body["items"][0]
     assert app["match_score"] == 95.0
     assert app["documents"]["count"] == 3
     assert {d["type"] for d in app["documents"]["latest"]} == {"cv", "cover_letter"}
-    assert client.get("/api/v1/applications", params={"q": "acme"}).json()
-    assert client.get("/api/v1/applications", params={"q": "nope-xyz"}).json() == []
-    assert client.get("/api/v1/applications", params={"status": "SUBMITTED"}).json() == []
-    assert client.get("/api/v1/applications", params={"min_score": 99}).json() == []
-    assert len(client.get("/api/v1/applications", params={"min_score": 90}).json()) == 1
+    assert client.get("/api/v1/applications", params={"q": "acme"}).json()["total"] == 1
+    assert client.get("/api/v1/applications", params={"q": "nope-xyz"}).json()["items"] == []
+    assert client.get("/api/v1/applications", params={"status": "SUBMITTED"}).json()["items"] == []
+    assert client.get("/api/v1/applications", params={"min_score": 99}).json()["items"] == []
+    assert len(client.get("/api/v1/applications", params={"min_score": 90}).json()["items"]) == 1
 
 
 def test_application_detail(client, seed):
@@ -240,26 +241,26 @@ def test_notes_roundtrip(client, seed):
 
 
 def test_documents_list_with_application_id_filter(client, seed):
-    # Test filtering by application_id
+    # Test filtering by application_id (yalnizca SON surum: cv2).
     body = client.get("/api/v1/documents", params={"application_id": str(seed["app1"])}).json()
-    assert len(body) == 2  # cv1, cv2
-    for d in body:
+    assert len(body["items"]) == 1  # cv2
+    for d in body["items"]:
         assert d["application"] == {"id": str(seed["app1"]), "status": "READY_TO_APPLY"}
 
 
 def test_applications_with_document_summary_and_filters(client, seed):
     body = client.get("/api/v1/applications").json()
-    assert len(body) == 1
-    app = body[0]
+    assert body["total"] == 1
+    app = body["items"][0]
     assert app["match_score"] == 95.0
     assert app["documents"]["count"] == 3
     assert {d["type"] for d in app["documents"]["latest"]} == {"cv", "cover_letter"}
     # Filters
-    assert client.get("/api/v1/applications", params={"q": "acme"}).json()
-    assert client.get("/api/v1/applications", params={"q": "nope-xyz"}).json() == []
-    assert client.get("/api/v1/applications", params={"status": "SUBMITTED"}).json() == []
-    assert client.get("/api/v1/applications", params={"min_score": 99}).json() == []
-    assert len(client.get("/api/v1/applications", params={"min_score": 90}).json()) == 1
+    assert client.get("/api/v1/applications", params={"q": "acme"}).json()["total"] == 1
+    assert client.get("/api/v1/applications", params={"q": "nope-xyz"}).json()["items"] == []
+    assert client.get("/api/v1/applications", params={"status": "SUBMITTED"}).json()["items"] == []
+    assert client.get("/api/v1/applications", params={"min_score": 99}).json()["items"] == []
+    assert len(client.get("/api/v1/applications", params={"min_score": 90}).json()["items"]) == 1
 
 
 def test_application_detail_includes_documents_and_form(client, seed):
@@ -285,7 +286,7 @@ def test_manual_create_idempotent(client):
 
 def test_orphan_documents_render_without_error(client, seed):
     """Orphan documents (no application) should render without error in UI."""
-    body = client.get("/api/v1/documents").json()
+    body = client.get("/api/v1/documents").json()["items"]
     orphan_entries = [d for d in body if d["application"] is None]
     assert len(orphan_entries) >= 1
     # Each orphan should have company and job_title fields

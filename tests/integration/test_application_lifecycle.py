@@ -174,7 +174,7 @@ def test_document_snapshot_is_per_application_not_per_job(client, seed):
     assert seed["cv4"] in linked_a and seed["cv5"] not in linked_a
     assert seed["cv5"] in linked_b and seed["cv4"] not in linked_b
     # List view exposes the same snapshot.
-    apps = {a["id"]: a for a in client.get("/api/v1/applications").json()}
+    apps = {a["id"]: a for a in client.get("/api/v1/applications").json()["items"]}
     assert [d["id"] for d in apps[seed["app_a"]]["documents"]["attached"]] == [seed["cv4"]]
 
 
