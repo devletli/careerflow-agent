@@ -24,38 +24,43 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Faz 2'deki merkezi liste gelene kadar gecici kopya.
-ATS_HOSTS = {
-    "greenhouse.io": "greenhouse",
-    "lever.co": "lever",
-    "workable.com": "workable",
-    "ashbyhq.com": "ashby",
-    "smartrecruiters.com": "smartrecruiters",
-    "personio.de": "personio",
-    "personio.com": "personio",
-    "join.com": "join",
-    "softgarden.de": "softgarden",
-    "softgarden.io": "softgarden",
-}
+# Tek kaynak: browser/site_adapters/resolve.py (import edilemezse kucuk kopya).
+try:
+    from browser.site_adapters.resolve import (  # noqa: E402
+        ATS_HOSTS,
+        ats_from_host,
+        ats_from_url,
+        host_of,
+    )
+except Exception:  # pragma: no cover - yalnizca bozuk kurulumlarda
+    ATS_HOSTS = {
+        "greenhouse.io": "greenhouse",
+        "lever.co": "lever",
+        "workable.com": "workable",
+        "ashbyhq.com": "ashby",
+        "smartrecruiters.com": "smartrecruiters",
+        "personio.de": "personio",
+        "personio.com": "personio",
+        "join.com": "join",
+        "softgarden.de": "softgarden",
+        "softgarden.io": "softgarden",
+    }
 
+    def host_of(url: str) -> str:
+        try:
+            return (urlparse((url or "").strip()).hostname or "").lower()
+        except Exception:
+            return ""
 
-def host_of(url: str) -> str:
-    try:
-        return (urlparse((url or "").strip()).hostname or "").lower()
-    except Exception:
-        return ""
+    def ats_from_host(host: str) -> str | None:
+        host = (host or "").lower().strip()
+        for suffix, name in ATS_HOSTS.items():
+            if host == suffix or host.endswith("." + suffix):
+                return name
+        return None
 
-
-def ats_from_host(host: str) -> str | None:
-    host = (host or "").lower().strip()
-    for suffix, name in ATS_HOSTS.items():
-        if host == suffix or host.endswith("." + suffix):
-            return name
-    return None
-
-
-def ats_from_url(url: str) -> str | None:
-    return ats_from_host(host_of(url))
+    def ats_from_url(url: str) -> str | None:
+        return ats_from_host(host_of(url))
 
 
 def count_hosts(urls: list[str]) -> Counter:

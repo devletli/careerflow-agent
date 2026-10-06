@@ -42,6 +42,7 @@ from desktop_runner.navigation import (
     is_submit_label,
     wait_for_content,
 )
+from desktop_runner.target import resolve_target
 
 REASONS = {
     "CAPTCHA": "CAPTCHA bekleniyor.",
@@ -82,6 +83,10 @@ class AssistSummary:
     unverified: list[str] = field(default_factory=list)
     handoffs: int = 0
     timed_out: str | None = None
+    ats: str = "generic"
+    target_kind: str = "form"  # form | stay | moved | email_only | no_form
+    target_reason: str | None = None  # EMAIL_ONLY | NO_ONLINE_FORM | None
+    target_email: str | None = None  # panele gosterilir, rapora yazilmaz
 
 
 async def _fresh_page(ctx: BrowserContext) -> Page:
@@ -340,6 +345,31 @@ async def run_assisted(
     await wait_for_content(page)
 
     summary = AssistSummary()
+    target = await resolve_target(
+        page,
+        app_url,
+        form_like=await looks_like_application_form(page, app_url),
+        blocked=await detect_blocker(page) is not None,
+        recheck_form=lambda p: looks_like_application_form(p, app_url),
+    )
+    summary.ats = target.get("ats", "generic")
+    summary.target_kind = target.get("kind", "form")
+    if target["kind"] == "email_only":
+        summary.target_reason = "EMAIL_ONLY"
+        summary.target_email = target.get("email")
+        await show_panel(
+            page,
+            f"Bu ilan e-posta ile basvuru istiyor: {summary.target_email}. "
+            "Mail atmadim; adresi dashboard'daki ilanda da gorebilirsin.",
+        )
+        return page, summary
+    if target["kind"] == "no_form":
+        summary.target_reason = "NO_ONLINE_FORM"
+        await show_panel(
+            page,
+            "Bu sayfada cevrimici basvuru formu bulamadim (NO_ONLINE_FORM).",
+        )
+        return page, summary
     opener_tried = False
     for _ in range(MAX_STEPS):
         blocker = await detect_blocker(page)

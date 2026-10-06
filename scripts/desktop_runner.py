@@ -14,6 +14,8 @@ import yaml
 from playwright.async_api import Page, async_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+# Merkezi ATS tablosu (browser/site_adapters/resolve.py, stdlib-only) icin.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from desktop_runner.config import DesktopSettings  # noqa: E402
 from desktop_runner.assisted import run_assisted  # noqa: E402
 from desktop_runner.diagnostics import (  # noqa: E402
@@ -169,10 +171,18 @@ async def _begin_run_report(browser_context):
 
 def _summary_report(app_url: str, summary) -> dict:
     """AssistSummary -> report.json sozlugu (anahtar/sonuc/sebep; DEGER YOK)."""
-    report = _new_report(ats="generic", host=_host_of(app_url or ""))
+    report = _new_report(
+        ats=getattr(summary, "ats", "generic") or "generic",
+        host=_host_of(app_url or ""),
+    )
     report["handoffs"] = int(getattr(summary, "handoffs", 0) or 0)
     timed_out = getattr(summary, "timed_out", None)
     report["timed_out"] = str(timed_out) if timed_out else None
+    target_kind = getattr(summary, "target_kind", "form") or "form"
+    target_reason = getattr(summary, "target_reason", None)
+    _record_step(report, "resolve_target",
+                 ok=target_kind in ("form", "stay", "moved"),
+                 reason=str(target_reason) if target_reason else None)
     _record_step(report, "run_assisted", ok=timed_out is None,
                  reason=str(timed_out) if timed_out else None)
     for key in getattr(summary, "filled", []) or []:
