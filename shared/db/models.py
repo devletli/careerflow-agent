@@ -91,6 +91,7 @@ class Job(Base):
         # NOT: (source, source_job_id) icin ayri non-unique indeks YOK;
         # unique constraint'in destek indeksi ayni taramalara hizmet eder (007).
         UniqueConstraint("source", "source_job_id", name="uq_jobs_source_source_job_id"),
+        Index("ix_jobs_last_seen", "last_seen_at"),
     )
 
 
@@ -136,6 +137,10 @@ class JobMatch(Base):
 
     job: Mapped["Job"] = relationship("Job", back_populates="matches")
     profile: Mapped[Optional["Profile"]] = relationship("Profile")
+
+    __table_args__ = (
+        Index("ix_job_matches_rank", "overall_score", "job_id"),
+    )
 
 
 class Document(Base):
