@@ -143,6 +143,100 @@ async def upload_documents(page: Page, document_paths: dict) -> None:
                 await field.set_input_files(str(document_path))
 
 
+def list_application_ids(statuses: list[str], limit: int) -> list[str]:
+    """Verilen durumlardaki başvuru id'lerini API'den toplar (tek tek id gerekmez)."""
+    import json as _json
+
+    ids: list[str] = []
+    for st in statuses:
+        cur: str | None = None
+        while len(ids) < limit:
+            url = f"{API_BASE_URL}/api/v1/applications?limit=50&status={urllib.parse.quote(st)}"
+            if cur:
+                url += f"&cursor={urllib.parse.quote(cur)}"
+            request = urllib.request.Request(url, headers={"X-API-Key": _api_key_from_env()})
+            try:
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    body = _json.load(response)
+            except Exception as exc:
+                raise RuntimeError(
+                    "Could not list applications from the local AI Job Agent API. "
+                    "Make sure Docker Compose is running."
+                ) from exc
+            items = body.get("items", []) if isinstance(body, dict) else body
+            ids.extend([a["id"] for a in items])
+            cur = body.get("next_cursor") if isinstance(body, dict) else None
+            if not cur:
+                break
+    return ids[:limit]
+
+
+async def run_many(application_ids: list[str], *, fresh_profile: bool = False) -> None:
+    """Tek tarayıcı oturumunda sırayla: her başvuruda doldur, Enter ile sonrakine geç."""
+    profile = load_profile()
+    settings = DesktopSettings.from_env()
+    if fresh_profile:
+        user_data_dir = Path(tempfile.mkdtemp(prefix="careerflow-desktop-"))
+    else:
+        user_data_dir = settings.profile_dir
+        user_data_dir.mkdir(parents=True, exist_ok=True)
+    (PROJECT_ROOT / "browser-traces").mkdir(parents=True, exist_ok=True)
+
+    launch_kwargs: dict = {
+        "headless": False,
+        "viewport": {"width": 1440, "height": 1000},
+    }
+    if settings.browser_channel != "chromium":
+        launch_kwargs["channel"] = settings.browser_channel
+    async with async_playwright() as playwright:
+        browser_context = await playwright.chromium.launch_persistent_context(
+            str(user_data_dir),
+            **launch_kwargs,
+        )
+        try:
+            for index, application_id in enumerate(application_ids, start=1):
+                try:
+                    context = request_context(application_id)
+                except RuntimeError as exc:
+                    logger.error("(%d/%d) atlandi: %s", index, len(application_ids), exc)
+                    continue
+                prepared = prepare_upload_files(API_BASE_URL, _api_key_from_env(), application_id)
+                try:
+                    page, _summary = await run_assisted(
+                        browser_context,
+                        context["application_url"],
+                        profile,
+                        context["verified_answers"],
+                        settings,
+                        prepared,
+                    )
+                    await page.screenshot(
+                        path=str(PROJECT_ROOT / "browser-traces" / f"{context['application_id']}_desktop_prepared.png"),
+                        full_page=True,
+                    )
+                    logger.info(
+                        "(%d/%d) %s — %s hazir. Kalan alanlari tamamlayip gonderin; "
+                        "sonraki basvuru icin konsolda Enter'a basin (bitirirseniz tarayiciyi kapatin).",
+                        index, len(application_ids), context["company"], context["title"],
+                    )
+                    try:
+                        await asyncio.to_thread(input, "Devam için Enter...")
+                    except EOFError:
+                        break
+                finally:
+                    cleanup_upload_files(prepared)
+                try:
+                    if index < len(application_ids):
+                        await page.close()
+                except Exception:
+                    pass
+        finally:
+            try:
+                await browser_context.close()
+            except Exception:
+                pass
+
+
 async def run(application_uri: str, *, fresh_profile: bool = False) -> None:
     application_id = application_id_from_uri(application_uri)
     context = request_context(application_id)
@@ -196,15 +290,37 @@ async def run(application_uri: str, *, fresh_profile: bool = False) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("application_uri")
+    parser.add_argument("application_uri", nargs="?")
     parser.add_argument(
         "--fresh-profile",
         action="store_true",
         help="Gecici bir tarayici profili ac (oturum saklanmaz).",
     )
+    parser.add_argument(
+        "--batch",
+        nargs="+",
+        metavar="STATUS",
+        help="Duruma gore toplu: tek tek id gerekmez (orn. --batch BLOCKED REQUIRES_HUMAN).",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Toplu kipte en fazla basvuru (varsayilan 10).",
+    )
     args = parser.parse_args()
     try:
-        asyncio.run(run(args.application_uri, fresh_profile=args.fresh_profile))
+        if args.batch:
+            ids = list_application_ids(args.batch, args.limit)
+            if not ids:
+                logger.error("Secili durumlarda basvuru bulunamadi: %s", args.batch)
+                raise SystemExit(1)
+            logger.info("%d basvuru sirayla islenecek: %s", len(ids), args.batch)
+            asyncio.run(run_many(ids, fresh_profile=args.fresh_profile))
+        elif args.application_uri:
+            asyncio.run(run(args.application_uri, fresh_profile=args.fresh_profile))
+        else:
+            parser.error("Bir application_uri ya da --batch STATUS gerekli.")
     except (RuntimeError, ValueError) as exc:
         logger.error("AI Job Agent desktop runner error: %s", exc)
         raise SystemExit(1) from exc
