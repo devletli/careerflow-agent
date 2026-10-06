@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { fetchJson, formatDate, StatusPill, STRINGS } from "../../lib";
+import { statusLabel, statusUxFor } from "../../lib/statusUx.js";
 
 function useDetail(id) {
   const [data, setData] = useState(null);
@@ -296,12 +297,86 @@ function InterviewsPanel({ interviews, appId, onChanged }) {
   );
 }
 
+function PrimaryBanner({ data, busy, message, onRun }) {
+  const ux = statusUxFor(data.status);
+  const reason = data.blocked_reason || data.failure_reason || "";
+  const solution =
+    data.status === "BLOCKED" ? STRINGS.solutionBlocked
+    : data.status === "FAILED" ? STRINGS.solutionFailed
+    : data.status === "REQUIRES_HUMAN" ? STRINGS.solutionHuman
+    : "";
+  const primaryLabel = {
+    prepare: STRINGS.prepareBtn,
+    view: STRINGS.viewProgress,
+    continue: STRINGS.continueManual,
+    review: STRINGS.primaryReview,
+    retry: STRINGS.retryBtn,
+    open: STRINGS.openInBrowser,
+    details: STRINGS.timeline,
+  }[ux.next];
+  return (
+    <div className="panel" style={{ marginBottom: 16 }}>
+      <div className="settings-item">
+        <div className="label"><StatusPill status={data.status} /> {statusLabel(data.status, STRINGS)}</div>
+        <div className="value">
+          {ux.next === "view" ? (
+            <a className="refresh-btn primary-btn" href={`ai-job-agent://prepare?application_id=${data.id}`}>
+              {primaryLabel}
+            </a>
+          ) : ux.next === "open" && data.application_url ? (
+            <a className="refresh-btn primary-btn" href={data.application_url} target="_blank" rel="noreferrer">
+              {primaryLabel}
+            </a>
+          ) : (
+            <button className="refresh-btn primary-btn" onClick={() => onRun(ux.next)} disabled={busy}>
+              {busy ? STRINGS.loading : primaryLabel}
+            </button>
+          )}
+        </div>
+      </div>
+      {reason && <p className="muted">{reason}</p>}
+      {solution && <p className="muted">{solution}</p>}
+      {message && <div className="action-message">{message}</div>}
+    </div>
+  );
+}
+
 export default function ApplicationDetail() {
   const { id } = useParams();
   const { data, error, loading, refresh } = useDetail(id);
   const [notes, setNotes] = useState("");
   const [notesMessage, setNotesMessage] = useState("");
   const [actionMessage, setActionMessage] = useState("");
+  const [primaryBusy, setPrimaryBusy] = useState(false);
+  const [primaryMessage, setPrimaryMessage] = useState("");
+
+  // Tek birincil düğme (STATUS_UX.next): tokensiz execute aksiyonları
+  // (prepare/retry/continue); submit akışı ve token koruması aynen korunur.
+  const runPrimary = async (action) => {
+    if (action === "review") {
+      document.getElementById("docs")?.scrollIntoView();
+      return;
+    }
+    if (action === "details") {
+      document.getElementById("timeline")?.scrollIntoView();
+      return;
+    }
+    setPrimaryBusy(true);
+    setPrimaryMessage("");
+    try {
+      const result = await fetchJson(`/api/v1/applications/${id}/execute`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      setPrimaryMessage(result.manual_steps ? result.manual_steps.join(" ") : `${action} → ${result.status}`);
+      refresh();
+    } catch (e) {
+      setPrimaryMessage(e.message);
+    } finally {
+      setPrimaryBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (data) setNotes(data.notes || "");
@@ -355,6 +430,7 @@ export default function ApplicationDetail() {
     <main className="app-shell">
       <Link className="link" href="/">{STRINGS.backToApplications}</Link>
       <h1>{data.company} — {data.title}</h1>
+      <PrimaryBanner data={data} busy={primaryBusy} message={primaryMessage} onRun={runPrimary} />
       <div className="stat-grid">
         <div className="stat-card">
           <div className="label">{STRINGS.colStatus}</div>
@@ -379,7 +455,7 @@ export default function ApplicationDetail() {
 
       <LifecyclePanel data={data} id={id} onChanged={refresh} />
 
-      <div className="panel">
+      <div className="panel" id="docs">
         <h3 style={{ marginTop: 0 }}>{STRINGS.colDocs}</h3>
         {(data.attached_documents || []).length > 0 && (
           <p className="muted">
@@ -429,7 +505,7 @@ export default function ApplicationDetail() {
         ))}
       </div>
 
-      <div className="panel">
+      <div className="panel" id="timeline">
         <h3 style={{ marginTop: 0 }}>{STRINGS.timeline}</h3>
         {((data.timeline || []).length === 0) && <p className="muted">{STRINGS.noEvents}</p>}
         {(data.timeline || data.events || []).map((e, i) => (
