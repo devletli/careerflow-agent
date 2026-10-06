@@ -105,7 +105,11 @@ async def fill_form(page: Page, context: dict, profile: dict) -> None:
         if not await field.is_visible() or not await field.is_enabled():
             continue
         input_type = (await field.get_attribute("type") or "text").lower()
-        if input_type in {"file", "checkbox", "radio", "submit", "button"}:
+        if input_type in {"file", "checkbox", "radio", "submit", "button", "password", "hidden"}:
+            continue
+        # HOTFIX: kimlik bilgisi/OTP alanlarina asla yazma (tur + autocomplete cift filtresi).
+        autocomplete = (await field.get_attribute("autocomplete") or "").lower().strip()
+        if autocomplete in {"one-time-code", "current-password", "new-password"}:
             continue
         field_key = normalized(
             " ".join(
