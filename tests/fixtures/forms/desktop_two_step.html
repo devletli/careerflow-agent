@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture: two-step application form</title></head>
+<body>
+  <h1>Apply: DevOps Engineer</h1>
+  <form id="application-form" onsubmit="window.__submitted = true; return false;">
+    <div id="step1">
+      <label for="first_name">First Name</label>
+      <input type="text" id="first_name" name="first_name" required>
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" required>
+      <button type="button" id="next-btn" onclick="window.__advanced=true;document.getElementById('step1').style.display='none';document.getElementById('step2').style.display='block';">Next</button>
+    </div>
+    <div id="step2" style="display:none;">
+      <label for="phone">Phone</label>
+      <input type="tel" id="phone" name="phone" required>
+      <button type="submit" id="submit-btn">Submit application</button>
+    </div>
+  </form>
+  <script>window.__submitted = false; window.__advanced = false;</script>
+</body>
+</html>

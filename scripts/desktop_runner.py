@@ -4,7 +4,6 @@ import argparse
 import asyncio
 import json
 import logging
-import re
 import sys
 import tempfile
 import urllib.parse
@@ -16,6 +15,16 @@ from playwright.async_api import Page, async_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from desktop_runner.config import DesktopSettings  # noqa: E402
+from desktop_runner.assisted import run_assisted  # noqa: E402
+from desktop_runner.documents import (  # noqa: E402
+    cleanup_upload_files,
+    prepare_upload_files,
+)
+from desktop_runner.fields import (  # noqa: E402
+    answer_for_field,
+    normalized,
+    standard_answers,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 API_BASE_URL = "http://localhost:8000"
@@ -63,37 +72,6 @@ def request_context(application_id: str) -> dict:
 def load_profile() -> dict:
     with (PROJECT_ROOT / "profile" / "profile.yaml").open(encoding="utf-8") as profile_file:
         return (yaml.safe_load(profile_file) or {}).get("candidate", {})
-
-
-def normalized(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
-
-
-def standard_answers(profile: dict) -> dict:
-    name_parts = profile.get("name", "").split()
-    location = profile.get("location", {})
-    return {
-        "first_name": name_parts[0] if name_parts else "",
-        "firstname": name_parts[0] if name_parts else "",
-        "last_name": " ".join(name_parts[1:]) if len(name_parts) > 1 else "",
-        "lastname": " ".join(name_parts[1:]) if len(name_parts) > 1 else "",
-        "email": profile.get("email", ""),
-        "phone": profile.get("phone", ""),
-        "website": profile.get("website", ""),
-        "portfolio": profile.get("website", ""),
-        "city": location.get("city", ""),
-        "country": location.get("country", ""),
-    }
-
-
-def answer_for_field(field_key: str, answers: dict) -> object | None:
-    for answer_key, answer_value in answers.items():
-        normalized_key = normalized(answer_key)
-        if normalized_key and (
-            normalized_key in field_key or field_key in normalized_key
-        ):
-            return answer_value
-    return None
 
 
 async def fill_form(page: Page, context: dict, profile: dict) -> None:
@@ -183,21 +161,37 @@ async def run(application_uri: str, *, fresh_profile: bool = False) -> None:
     }
     if settings.browser_channel != "chromium":
         launch_kwargs["channel"] = settings.browser_channel
+    prepared = prepare_upload_files(API_BASE_URL, _api_key_from_env(), application_id)
     async with async_playwright() as playwright:
         browser_context = await playwright.chromium.launch_persistent_context(
             str(user_data_dir),
             **launch_kwargs,
         )
-        page = browser_context.pages[0] if browser_context.pages else await browser_context.new_page()
-        await fill_form(page, context, profile)
+        page, _summary = await run_assisted(
+            browser_context,
+            context["application_url"],
+            profile,
+            context["verified_answers"],
+            settings,
+            prepared,
+        )
+        await page.screenshot(
+            path=str(PROJECT_ROOT / "browser-traces" / f"{context['application_id']}_desktop_prepared.png"),
+            full_page=True,
+        )
         logger.info(
             "%s — %s hazır. CAPTCHA/giriş ve kalan alanları tamamlayıp "
-            "başvuruyu kendiniz gönderin. İşiniz bittiğinde Chromium "
+            "başvuruyu kendiniz gönderin. İşiniz bittiğinde tarayıcı "
             "penceresini kapatın.",
             context["company"],
             context["title"],
         )
-        await page.wait_for_event("close")
+        try:
+            await browser_context.wait_for_event("close", timeout=0)
+        finally:
+            # Chromium dosyayi submit aninda okur: temp belgeler ancak
+            # tarayici kapandiktan sonra silinir.
+            cleanup_upload_files(prepared)
 
 
 if __name__ == "__main__":
