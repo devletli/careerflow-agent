@@ -41,14 +41,18 @@ def list_application_documents(
 
 
 def pick_document_ids(documents: list[dict]) -> dict[str, str]:
-    """Mirror the desktop-context selection: cv v1 + latest cover letter."""
+    """Mirror the desktop-context selection: latest cv + latest cover letter."""
     picked: dict[str, str] = {}
-    for row in documents:
-        doc_type = row.get("type")
-        if doc_type == "cv" and "resume" not in picked and row.get("version") == 1:
-            picked["resume"] = row["id"]
-        elif doc_type == "cover_letter" and "cover_letter" not in picked:
-            picked["cover_letter"] = row["id"]
+    # Pick latest CV (highest version)
+    cv_rows = [r for r in documents if r.get("type") == "cv"]
+    if cv_rows:
+        latest_cv = max(cv_rows, key=lambda r: r.get("version", 0))
+        picked["resume"] = latest_cv["id"]
+    # Pick latest cover letter (highest version)
+    cl_rows = [r for r in documents if r.get("type") == "cover_letter"]
+    if cl_rows:
+        latest_cl = max(cl_rows, key=lambda r: r.get("version", 0))
+        picked["cover_letter"] = latest_cl["id"]
     return picked
 
 

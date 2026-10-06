@@ -79,7 +79,7 @@ def test_pick_mirrors_desktop_context_selection():
             {"id": "cl", "type": "cover_letter", "version": 3},
         ]
     )
-    assert picked == {"resume": "cv-v1", "cover_letter": "cl"}
+    assert picked == {"resume": "cv-v2", "cover_letter": "cl"}
 
 
 def test_download_uses_fixed_names_not_server_filename(api_server, tmp_path):
