@@ -559,14 +559,16 @@ tr:hover td {
   flex-wrap: wrap;
 }
 
-/* Controlled column widths so Actions never forces horizontal scroll. */
-.table-fixed.jobs-table th:nth-child(1) { width: 26%; }
-.table-fixed.jobs-table th:nth-child(2) { width: 13%; }
-.table-fixed.jobs-table th:nth-child(3) { width: 10%; }
+/* Controlled column widths so Actions never forces horizontal scroll.
+   Jobs has 8 columns: narrow bulk-select checkbox first, then content. */
+.table-fixed.jobs-table th:nth-child(1) { width: 4%; }
+.table-fixed.jobs-table th:nth-child(2) { width: 24%; }
+.table-fixed.jobs-table th:nth-child(3) { width: 12%; }
 .table-fixed.jobs-table th:nth-child(4) { width: 10%; }
-.table-fixed.jobs-table th:nth-child(5) { width: 7%; }
-.table-fixed.jobs-table th:nth-child(6) { width: 14%; }
-.table-fixed.jobs-table th:nth-child(7) { width: 20%; }
+.table-fixed.jobs-table th:nth-child(5) { width: 10%; }
+.table-fixed.jobs-table th:nth-child(6) { width: 6%; }
+.table-fixed.jobs-table th:nth-child(7) { width: 14%; }
+.table-fixed.jobs-table th:nth-child(8) { width: 20%; }
 
 .table-fixed.applications-table th:nth-child(1) { width: 28%; }
 .table-fixed.applications-table th:nth-child(2) { width: 8%; }

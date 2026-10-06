@@ -58,3 +58,18 @@ def test_prepare_messages_translated():
         for key in ("prepareSelected", "confirmPrepare", "preparing", "selectAllPage", "tooManySelected"):
             assert key in d, f"{name}: {key} yok"
         assert "{count}" in d["prepareSelected"] and "{count}" in d["confirmPrepare"]
+
+
+def test_jobs_column_widths_match_checkbox_column():
+    """Regresyon: checkbox sütunu eklenince nth-child genişlikleri 8 sütuna
+    göre güncellenmeli, yoksa tablo sağa kaymış görünür."""
+    import re
+
+    tab = JOBS_TAB.read_text(encoding="utf-8")
+    thead = tab.split("<thead>")[1].split("</thead>")[0]
+    th_count = thead.count("<th")
+    css = (ROOT / "services" / "frontend" / "app" / "globals.css").read_text(encoding="utf-8")
+    widths = [int(w) for w in re.findall(r"\.table-fixed\.jobs-table th:nth-child\(\d+\) \{ width: (\d+)%; \}", css)]
+    assert len(widths) == th_count, f"CSS {len(widths)} sütun, tablo {th_count} sütun"
+    assert sum(widths) == 100, f"sütun genişlikleri toplamı {sum(widths)}, 100 olmalı"
+    assert widths[0] <= 5, "checkbox sütunu dar olmalı"
