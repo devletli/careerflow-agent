@@ -32,3 +32,13 @@ def test_lists_use_shared_hook_with_stable_cursor():
     assert "next_cursor" in src
     # Seçim üst bileşende; tablo yalnızca okur.
     assert "jobs.selected" in src
+
+
+def test_followup_unwraps_paged_envelope():
+    """Regresyon: /applications zarf ({items,...}) döndürür; FollowUpPanel
+    diziyi spread etmeden önce items'a çözer, yoksa istemci çöker."""
+    overview = (ROOT / "services" / "frontend" / "app" / "components" / "tabs" / "OverviewTab.js").read_text(
+        encoding="utf-8"
+    )
+    assert ".items" in overview, "sayfalı zarf çözülmeli"
+    assert "Array.isArray" in overview

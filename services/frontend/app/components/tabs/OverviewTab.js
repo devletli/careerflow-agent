@@ -13,19 +13,22 @@ function dayKey(iso) {
 function FollowUpPanel({ applications }) {
   const [upcoming, setUpcoming] = useState([]);
   const [overdueFetch, setOverdueFetch] = useState([]);
+  // Liste uçları sayfalı zarf döner ({items,...}); eski düz-dizi
+  // yanıtlarla da çalışır.
+  const toArray = (v) => (Array.isArray(v) ? v : v?.items || []);
   useEffect(() => {
     let cancelled = false;
     // Refetch when the polled applications change so newly scheduled
     // interviews / due dates appear without a full page reload. Overdue is
-    // also fetched server-side so items beyond the first 100 applications
+    // also fetched server-side so items beyond the first page of applications
     // still surface here.
     Promise.all([
       fetchJson("/api/v1/interviews?upcoming=true&limit=20").catch(() => []),
       fetchJson("/api/v1/applications?overdue=true&limit=50").catch(() => []),
     ]).then(([ivRows, overdueRows]) => {
       if (cancelled) return;
-      setUpcoming(ivRows || []);
-      setOverdueFetch(overdueRows || []);
+      setUpcoming(toArray(ivRows));
+      setOverdueFetch(toArray(overdueRows));
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [applications]);
