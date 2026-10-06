@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture: CAPTCHA that clears after 1.5s</title></head>
+<body>
+  <h1>Apply: DevOps Engineer</h1>
+  <form id="application-form" onsubmit="window.__submitted = true; return false;">
+    <label for="first_name">First Name</label>
+    <input type="text" id="first_name" name="first_name" required>
+    <div id="challenge">
+      <div class="g-recaptcha" data-sitekey="fixture-site-key-0000">
+        <span>Please complete the captcha challenge</span>
+      </div>
+      <iframe src="/__mock__/recaptcha/api2/bframe" width="400" height="500" title="recaptcha challenge"></iframe>
+    </div>
+    <button type="submit" id="submit-btn">Submit application</button>
+  </form>
+  <script>
+    window.__submitted = false;
+    setTimeout(() => { document.getElementById('challenge').remove(); }, 1500);
+  </script>
+</body>
+</html>
