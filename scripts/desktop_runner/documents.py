@@ -8,6 +8,7 @@ the browser is closed, because Chromium reads the file at submit time.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import tempfile
 import urllib.parse
@@ -15,6 +16,8 @@ import urllib.request
 from pathlib import Path
 
 from playwright.async_api import Page
+
+logger = logging.getLogger("desktop-runner")
 
 FIXED_FILENAMES = {
     "resume": "cv.pdf",
@@ -33,11 +36,13 @@ def list_application_documents(
     api_base: str, api_key: str, application_id: str
 ) -> list[dict]:
     """Resolve document rows for one application (id, type, version)."""
-    query = urllib.parse.urlencode({"application_id": application_id, "limit": 100})
+    query = urllib.parse.urlencode({"application_id": application_id, "limit": 50})
     with urllib.request.urlopen(
         _request(api_base, api_key, f"/api/v1/documents?{query}"), timeout=15
     ) as response:
-        return json.load(response)
+        data = json.load(response)
+        # API v2 returns paginated envelope {items: [...]}; v1 returned array.
+        return data.get("items", data) if isinstance(data, dict) else data
 
 
 def pick_document_ids(documents: list[dict]) -> dict[str, str]:
@@ -78,14 +83,21 @@ def prepare_upload_files(
         picked = pick_document_ids(
             list_application_documents(api_base, api_key, application_id)
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning("Failed to list documents for %s: %s", application_id, exc)
         return prepared
     for slot, document_id in picked.items():
         dest = workdir / FIXED_FILENAMES[slot]
         try:
             download_document(api_base, api_key, document_id, dest)
-            prepared[slot] = dest
-        except Exception:
+            if dest.is_file() and dest.stat().st_size > 0:
+                prepared[slot] = dest
+                logger.info("Prepared %s -> %s (%d bytes)", slot, dest, dest.stat().st_size)
+            else:
+                logger.warning("Downloaded %s is empty, skipping", slot)
+                dest.unlink(missing_ok=True)
+        except Exception as exc:
+            logger.warning("Failed to download %s (%s): %s", slot, document_id, exc)
             continue
     return prepared
 
