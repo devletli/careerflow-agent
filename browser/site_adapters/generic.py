@@ -14,41 +14,6 @@ from browser.site_adapters.base import FieldPlan, FieldSpec, FillResult
 
 logger = logging.getLogger(__name__)
 
-CAPTCHA_SELECTORS = [
-    "iframe[src*='recaptcha']",
-    "iframe[src*='hcaptcha']",
-    "[data-sitekey]",
-]
-
-CAPTCHA_TEXT = [
-    "captcha",
-    "recaptcha",
-    "hcaptcha",
-    "security check",
-    "prove you're human",
-    "robot",
-    "cloudflare",
-    "access denied",
-]
-
-LOGIN_TEXT = [
-    "sign in to continue",
-    "please log in",
-    "create an account to apply",
-]
-
-MFA_TEXT = [
-    "mfa",
-    "2fa",
-    "two-factor",
-    "two factor",
-    "multi-factor",
-    "multi factor",
-    "authenticator",
-    "verification code",
-    "verify your identity",
-]
-
 # pre_fill: yalnizca bunlar tiklanir; ACCEPT_ALL_RX eslesen hicbir sey tiklanmaz.
 REJECT_RX = re.compile(
     r"reject|decline|only necessary|necessary only|essential only|"
@@ -69,18 +34,57 @@ class GenericAdapter:
         return True
 
     async def detect_blockers(self, page: Page) -> str | None:
-        for selector in CAPTCHA_SELECTORS:
-            if await page.locator(selector).count():
+        """Gorunur engeller: sadece gosterilen challenge/checkbox + bos token,
+        gorunur password/one-time-code. Tam sayfa metin taramasi YOK
+        (false positive engellenir)."""
+        # Challenge iframe/checkbox (reCAPTCHA badge disinda)
+        for selector in (
+            "iframe[src*='recaptcha/api2/bframe']",
+            "iframe[src*='hcaptcha.com'][src*='challenge']",
+            "iframe[src*='challenges.cloudflare.com']",
+            ".g-recaptcha",
+            ".h-captcha",
+        ):
+            loc = page.locator(selector).first
+            try:
+                if not await loc.is_visible():
+                    continue
+            except Exception:
+                continue
+            try:
+                handle = await loc.element_handle()
+                if handle is None:
+                    continue
+                outside_badge = await handle.evaluate(
+                    "(el) => !el.closest('.grecaptcha-badge')"
+                )
+                if not outside_badge:
+                    continue
+            except Exception:
+                continue
+            # Token doluysa challenge cozulmus sayilir.
+            token_filled = False
+            for tsel in (
+                "textarea[name='g-recaptcha-response']",
+                "textarea[name='h-captcha-response']",
+                "input[name='cf-turnstile-response']",
+            ):
+                tloc = page.locator(tsel).first
+                try:
+                    if await tloc.count() and (await tloc.input_value()).strip():
+                        token_filled = True
+                        break
+                except Exception:
+                    continue
+            if not token_filled:
                 return "CAPTCHA"
-        if await page.locator("input[type=password]").count():
+            return None
+
+        # Gorunur password / one-time-code (gizli/gorunmez sayilmaz)
+        if await page.locator("input[type=password]:visible").count():
             return "LOGIN"
-        text = (await page.content()).lower()
-        if any(indicator in text for indicator in CAPTCHA_TEXT):
-            return "CAPTCHA"
-        if any(indicator in text for indicator in MFA_TEXT):
+        if await page.locator("input[autocomplete='one-time-code']:visible").count():
             return "MFA"
-        if any(indicator in text for indicator in LOGIN_TEXT):
-            return "LOGIN"
         return None
 
     async def discover_application(self, page: Page) -> str | None:
