@@ -84,6 +84,20 @@ class AssistSummary:
     timed_out: str | None = None
 
 
+async def _fresh_page(ctx: BrowserContext) -> Page:
+    """Varsa boş sekmeyi kullanır, yoksa açar (gereksiz boş sekme birikmez)."""
+    try:
+        for candidate in ctx.pages:
+            try:
+                if candidate.url in ("about:blank", "chrome://newtab/"):
+                    return candidate
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return await ctx.new_page()
+
+
 async def _field_key(field: Locator) -> str:
     parts = []
     for attr in ("name", "id", "autocomplete", "placeholder", "aria-label"):
@@ -91,6 +105,15 @@ async def _field_key(field: Locator) -> str:
             parts.append(await field.get_attribute(attr))
         except Exception:
             parts.append(None)
+    # Ashby gibi sitelerde alan adı yalnızca <label>'da yazar.
+    try:
+        parts.append(
+            await field.evaluate(
+                "(el) => (el.labels ? Array.from(el.labels).map(l => l.innerText).join(' ') : '')"
+            )
+        )
+    except Exception:
+        parts.append(None)
     return normalized(" ".join(filter(None, parts)))
 
 
@@ -311,7 +334,7 @@ async def run_assisted(
     answers.update(verified_answers or {})
 
     await ensure_panel_script(ctx)
-    page = await ctx.new_page()
+    page = await _fresh_page(ctx)
     await page.goto(app_url, wait_until="domcontentloaded", timeout=45_000)
     # Boş sayfa normaldir (yeni sekme); içerik belirmeden tarama yapılmaz.
     await wait_for_content(page)

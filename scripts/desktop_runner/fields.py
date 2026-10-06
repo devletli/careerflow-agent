@@ -15,6 +15,7 @@ def normalized(value: str) -> str:
 def standard_answers(profile: dict) -> dict:
     name_parts = profile.get("name", "").split()
     location = profile.get("location", {})
+    full_name = profile.get("name", "")
     return {
         "first_name": name_parts[0] if name_parts else "",
         "firstname": name_parts[0] if name_parts else "",
@@ -26,14 +27,23 @@ def standard_answers(profile: dict) -> dict:
         "portfolio": profile.get("website", ""),
         "city": location.get("city", ""),
         "country": location.get("country", ""),
+        # Ayrışmamış ad alanları ("Legal Name") için adın tamamı.
+        # Bilerek "name" değil "full_name": kısa anahtar username/
+        # company_name gibi alanları da yakalardı.
+        "full_name": full_name,
     }
 
 
 def answer_for_field(field_key: str, answers: dict) -> object | None:
+    if not field_key:
+        return None
     for answer_key, answer_value in answers.items():
         normalized_key = normalized(answer_key)
         if normalized_key and (
             normalized_key in field_key or field_key in normalized_key
         ):
             return answer_value
+    # "Legal Name" gibi tek parça ad alanları: adın tamamı.
+    if "legal" in field_key or field_key in ("name", "fullname", "full_name"):
+        return answers.get("full_name")
     return None

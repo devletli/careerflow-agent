@@ -205,3 +205,29 @@ async def test_two_step_stops_when_required_unverified(form_server):
             assert len(summary.unverified) > 0
         finally:
             await browser.close()
+
+
+@pytest.mark.asyncio
+async def test_label_only_form_fills_name_and_email(form_server):
+    from playwright.async_api import async_playwright
+
+    assisted = _load("assisted")
+    settings = _settings()
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        try:
+            ctx = await browser.new_context()
+            page, summary = await assisted.run_assisted(
+                ctx,
+                f"{form_server}/label_only_form.html",
+                PROFILE,
+                {},
+                settings,
+                {},
+            )
+            assert await page.locator("#f1").input_value() == "Ada Lovelace"
+            assert await page.locator("#f2").input_value() == "ada@example.com"
+            assert await page.evaluate("window.__submitted !== true") is True
+            assert summary.timed_out is None
+        finally:
+            await browser.close()

@@ -93,6 +93,12 @@ async def fill_form(page: Page, context: dict, profile: dict) -> None:
         autocomplete = (await field.get_attribute("autocomplete") or "").lower().strip()
         if autocomplete in {"one-time-code", "current-password", "new-password"}:
             continue
+        try:
+            label_text = await field.evaluate(
+                "(el) => (el.labels ? Array.from(el.labels).map(l => l.innerText).join(' ') : '')"
+            )
+        except Exception:
+            label_text = None
         field_key = normalized(
             " ".join(
                 filter(
@@ -103,6 +109,7 @@ async def fill_form(page: Page, context: dict, profile: dict) -> None:
                         await field.get_attribute("autocomplete"),
                         await field.get_attribute("placeholder"),
                         await field.get_attribute("aria-label"),
+                        label_text,
                     ],
                 )
             )
