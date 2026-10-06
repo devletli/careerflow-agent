@@ -58,6 +58,10 @@ export default function Home() {
   // degisiminde sifirlanmaz) hem de backend ?q=/status/min_score
   // parametrelerine debounce ile baglanir.
   const [jobsQuery, setJobsQuery] = usePersistentState("jobs.query", "");
+  const [jobsMinScore, setJobsMinScore] = usePersistentState("jobs.minScore", "");
+  const [jobsBand, setJobsBand] = usePersistentState("jobs.band", "");
+  const [jobsSource, setJobsSource] = usePersistentState("jobs.source", "");
+  const [jobsOnlyNew, setJobsOnlyNew] = usePersistentState("jobs.onlyNew", false);
   const [appsQuery, setAppsQuery] = usePersistentState("applications.query", "");
   const [appsStatus, setAppsStatus] = usePersistentState("applications.status", "");
   const [appsMinScore, setAppsMinScore] = usePersistentState("applications.minScore", "");
@@ -76,27 +80,86 @@ export default function Home() {
   const appsStatusParam = appsStatus ? `&status=${encodeURIComponent(appsStatus)}` : "";
 
   const statusQ = usePolling("/api/v1/status");
-  const jobsQ = usePolling(
-    `/api/v1/jobs?limit=100${qParam(dJobsQuery)}${hideArchived ? "&exclude_archived=true" : ""}`
-  );
+  // Faz 5: Jobs tablosu cursor sayfalamalidir; 10sn polling tabloyu ve
+  // cursor'i SIFIRLAMAZ. jobsMetaQ yalnizca ust ozet sayaclari gunceller,
+  // sayfa verisi kullanici sayfa/filtre degistirene kadar sabit kalir.
+  const jobsFilterParams = useCallback((cursor) => {
+    let p = `limit=100${qParam(dJobsQuery)}`;
+    if (jobsMinScore !== "" && !Number.isNaN(Number(jobsMinScore))) p += `&min_score=${encodeURIComponent(jobsMinScore)}`;
+    if (jobsBand) p += `&band=${encodeURIComponent(jobsBand)}`;
+    if (jobsSource) p += `&source=${encodeURIComponent(jobsSource)}`;
+    if (jobsOnlyNew) p += `&recent_days=7`;
+    if (hideArchived) p += `&exclude_archived=true`;
+    if (cursor) p += `&cursor=${encodeURIComponent(cursor)}`;
+    return p;
+  }, [dJobsQuery, jobsMinScore, jobsBand, jobsSource, jobsOnlyNew, hideArchived]);
+  const jobsMetaQ = usePolling(`/api/v1/jobs?${jobsFilterParams("")}&limit=1`);
+  const [jobsList, setJobsList] = useState([]);
+  const [jobsMeta, setJobsMeta] = useState({ total: 0, scored: 0, unscored: 0, next_cursor: null });
+  const [jobsLoading, setJobsLoading] = useState(true);
+  const [jobsError, setJobsError] = useState(null);
+  const [cursorStack, setCursorStack] = useState([null]);
+  const fetchJobsPage = useCallback(async (cursor) => {
+    setJobsLoading(true);
+    try {
+      const res = await fetchJson(`/api/v1/jobs?${jobsFilterParams(cursor)}`);
+      const items = Array.isArray(res) ? res : (res.items || []);
+      setJobsList(items);
+      if (!Array.isArray(res)) {
+        setJobsMeta({
+          total: res.total ?? items.length,
+          scored: res.scored ?? 0,
+          unscored: res.unscored ?? 0,
+          next_cursor: res.next_cursor ?? null,
+        });
+      }
+      setJobsError(null);
+    } catch (e) {
+      // Son veri korunur; yalnizca hata bandi gosterilir.
+      setJobsError(e.message);
+    } finally {
+      setJobsLoading(false);
+    }
+  }, [jobsFilterParams]);
+  // Filtre degisince ilk sayfaya don (polling bunu tetiklemez).
+  useEffect(() => {
+    setCursorStack([null]);
+    fetchJobsPage(null);
+  }, [fetchJobsPage]);
+  // Ozet sayaçlar polling ile güncellenir; tabloya dokunulmaz.
+  useEffect(() => {
+    const m = jobsMetaQ.data;
+    if (m && !Array.isArray(m)) {
+      setJobsMeta({
+        total: m.total ?? 0,
+        scored: m.scored ?? 0,
+        unscored: m.unscored ?? 0,
+        next_cursor: jobsMeta.next_cursor,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobsMetaQ.data]);
+  const jobsRefresh = useCallback(() => {
+    fetchJobsPage(cursorStack[cursorStack.length - 1] || null);
+    jobsMetaQ.refresh();
+  }, [fetchJobsPage, cursorStack, jobsMetaQ]);
+  const jobsNext = useCallback(() => {
+    const next = jobsMeta.next_cursor;
+    if (!next) return;
+    setCursorStack((s) => [...s, next]);
+    fetchJobsPage(next);
+  }, [jobsMeta.next_cursor, fetchJobsPage]);
+  const jobsPrev = useCallback(() => {
+    if (cursorStack.length <= 1) return;
+    const prev = cursorStack[cursorStack.length - 2] || null;
+    setCursorStack((s) => s.slice(0, -1));
+    fetchJobsPage(prev);
+  }, [cursorStack, fetchJobsPage]);
   const applicationsQ = usePolling(
     `/api/v1/applications?limit=100${qParam(dAppsQuery)}${appsStatusParam}${appsScoreParam}`
   );
   const documentsQ = usePolling(`/api/v1/documents?limit=100${qParam(dDocsQuery)}`);
   const eventsQ = usePolling(`/api/v1/events?limit=50${qParam(dEventsQuery)}`);
-
-  // Faz 4: /api/v1/jobs artik {items, next_cursor, total, scored, unscored}
-  // doner; eski dizi yanıtla da uyumlu kal (gecis donemi güvencesi).
-  const jobsRaw = jobsQ.data;
-  const jobsList = Array.isArray(jobsRaw) ? jobsRaw : (jobsRaw?.items || []);
-  const jobsMeta = Array.isArray(jobsRaw)
-    ? { total: jobsRaw.length, scored: 0, unscored: 0, next_cursor: null }
-    : {
-        total: jobsRaw?.total ?? jobsList.length,
-        scored: jobsRaw?.scored ?? 0,
-        unscored: jobsRaw?.unscored ?? 0,
-        next_cursor: jobsRaw?.next_cursor ?? null,
-      };
 
   const runAction = useCallback(async (action) => {
     const requiresExtraWarning = action.id === "fill_applications";
@@ -126,7 +189,7 @@ export default function Home() {
       });
       setActionMessage(`${action.label} queued (${result.correlation_id}).`);
       setTimeout(() => {
-        jobsQ.refresh();
+        jobsRefresh();
         applicationsQ.refresh();
         documentsQ.refresh();
         eventsQ.refresh();
@@ -136,7 +199,7 @@ export default function Home() {
     } finally {
       setRunningAction(null);
     }
-  }, [applicationsQ, documentsQ, eventsQ, jobsQ]);
+  }, [applicationsQ, documentsQ, eventsQ, jobsRefresh]);
 
   const executeApplication = useCallback(async (application, action) => {    if (!application || !action) return;
     const name = `${application.company} — ${application.title}`;
@@ -222,7 +285,7 @@ export default function Home() {
       await deleteResource(path);
       setDeleteTarget(null);
       if (kind === "job") {
-        jobsQ.refresh();
+        jobsRefresh();
         applicationsQ.refresh();
         documentsQ.refresh();
         eventsQ.refresh();
@@ -239,7 +302,7 @@ export default function Home() {
     } finally {
       setDeletingId(null);
     }
-  }, [deleteTarget, deletingId, jobsQ, applicationsQ, documentsQ, eventsQ]);
+  }, [deleteTarget, deletingId, jobsRefresh, applicationsQ, documentsQ, eventsQ]);
 
   const archiveJob = useCallback(async (job, userStatus) => {
     if (!job?.id || archivingId) return;
@@ -250,13 +313,13 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_status: userStatus }),
       });
-      jobsQ.refresh();
+      jobsRefresh();
     } catch (error) {
       setActionMessage(`${STRINGS.archiveFailed} ${error.message}`);
     } finally {
       setArchivingId(null);
     }
-  }, [archivingId, jobsQ]);
+  }, [archivingId, jobsRefresh]);
 
   const deleteDialog = deleteTarget ? {
     job: { title: STRINGS.confirmDeleteJob, message: STRINGS.deleteJobDescription },
@@ -289,7 +352,36 @@ export default function Home() {
           actionMessage={actionMessage}
         />
       )}
-      {tab === "Jobs" && <JobsTab jobs={jobsList} jobsMeta={jobsMeta} query={jobsQuery} onQueryChange={setJobsQuery} error={jobsQ.error} loading={jobsQ.loading} refresh={jobsQ.refresh} onDelete={(j) => requestDelete("job", j)} deletingId={deletingId} onArchive={archiveJob} archivingId={archivingId} hideArchived={hideArchived} onHideArchivedChange={setHideArchived} />}
+      {tab === "Jobs" && (
+        <JobsTab
+          jobs={jobsList}
+          jobsMeta={jobsMeta}
+          query={jobsQuery}
+          onQueryChange={setJobsQuery}
+          minScore={jobsMinScore}
+          onMinScoreChange={setJobsMinScore}
+          band={jobsBand}
+          onBandChange={setJobsBand}
+          source={jobsSource}
+          onSourceChange={setJobsSource}
+          onlyNew={jobsOnlyNew}
+          onOnlyNewChange={setJobsOnlyNew}
+          error={jobsError || jobsMetaQ.error}
+          loading={jobsLoading}
+          refresh={jobsRefresh}
+          onNext={jobsNext}
+          onPrev={jobsPrev}
+          hasNext={Boolean(jobsMeta.next_cursor)}
+          hasPrev={cursorStack.length > 1}
+          page={cursorStack.length}
+          onDelete={(j) => requestDelete("job", j)}
+          deletingId={deletingId}
+          onArchive={archiveJob}
+          archivingId={archivingId}
+          hideArchived={hideArchived}
+          onHideArchivedChange={setHideArchived}
+        />
+      )}
       {tab === "Applications" && (
         <ApplicationsTab
           applications={applicationsQ.data}

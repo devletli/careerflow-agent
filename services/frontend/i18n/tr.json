@@ -143,5 +143,21 @@
   "archive": "Arşivle",
   "unarchive": "Arşivden çıkar",
   "hideArchived": "Arşivlenenleri gizle",
-  "archiveFailed": "Arşivleme başarısız."
+  "archiveFailed": "Arşivleme başarısız.",
+  "bestMatches": "En iyi eşleşmeler",
+  "jobsSummary": "Toplam {total} ilan · {scored} puanlanmış · {unscored} puanlanmamış",
+  "minScoreFilter": "Min skor",
+  "bandFilter": "Bant",
+  "allBands": "Tüm bantlar",
+  "sourceFilter": "Kaynak",
+  "allSources": "Tüm kaynaklar",
+  "onlyNew": "Yalnızca yeni (son 7 gün)",
+  "newBadge": "yeni",
+  "unscoredBadge": "Henüz puanlanmadı",
+  "nextPage": "Sonraki 100",
+  "prevPage": "Önceki",
+  "pageIndicator": "Sayfa {page}",
+  "explainBtn": "Açıkla",
+  "explaining": "Açıklama üretiliyor…",
+  "explainFailed": "Açıklama üretilemedi."
 }
