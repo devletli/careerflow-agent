@@ -50,12 +50,18 @@ export default function JobsTab({
   error, loading, refresh,
   onNext, onPrev, hasNext, hasPrev, page,
   onDelete, deletingId, onArchive, archivingId, hideArchived, onHideArchivedChange,
+  selectedIds, onToggleSelect, onToggleSelectPage, preparing, prepareMessage, onPrepare,
 }) {
   // Backend already filters ARCHIVED when ?exclude_archived=true; keep a
   // defensive client filter for cached/polling overlap.
   const all = jobs || [];
   const rows = hideArchived ? all.filter((j) => j.user_status !== "ARCHIVED") : all;
   const meta = jobsMeta || { total: rows.length, scored: 0, unscored: 0 };
+  // Toplu seçim üst bileşendedir (polling/sayfa değişiminde korunur); tablo yalnızca okur.
+  const selected = new Set(selectedIds || []);
+  const pageIds = rows.map((j) => j.id);
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+  const overLimit = selected.size > 20;
   const summary = (STRINGS.jobsSummary || "")
     .replace("{total}", meta.total ?? 0)
     .replace("{scored}", meta.scored ?? 0)
@@ -104,9 +110,33 @@ export default function JobsTab({
         </label>
       </div>
       {error && <div className="error-banner">{error}</div>}
+      <div className="toolbar">
+        <button
+          className="refresh-btn primary-btn"
+          onClick={onPrepare}
+          disabled={selected.size === 0 || overLimit || Boolean(preparing)}
+        >
+          {preparing ? STRINGS.preparing : (STRINGS.prepareSelected || "").replace("{count}", selected.size)}
+        </button>
+        {overLimit && <span className="error-banner">{STRINGS.tooManySelected}</span>}
+        {prepareMessage && <span className="action-message">{prepareMessage}</span>}
+      </div>
+      {Boolean(preparing) && (
+        <div className="toolbar" aria-label={STRINGS.preparing}>
+          <progress value={undefined} style={{ width: "100%" }} />
+        </div>
+      )}
       <table className="responsive table-fixed jobs-table">
         <thead>
           <tr>
+            <th>
+              <input
+                type="checkbox"
+                checked={allPageSelected}
+                onChange={() => onToggleSelectPage && onToggleSelectPage(pageIds, allPageSelected)}
+                aria-label={STRINGS.selectAllPage}
+              />
+            </th>
             <th>{STRINGS.colJob}</th>
             <th>{STRINGS.colLocation}</th>
             <th>{STRINGS.colStatus}</th>
@@ -119,6 +149,14 @@ export default function JobsTab({
         <tbody>
           {rows.map((j) => (
             <tr key={j.id}>
+              <td data-label={STRINGS.selectAllPage}>
+                <input
+                  type="checkbox"
+                  checked={selected.has(j.id)}
+                  onChange={() => onToggleSelect && onToggleSelect(j.id)}
+                  aria-label={`${j.company} — ${j.title}`}
+                />
+              </td>
               <td data-label={STRINGS.colJob} className="cell-main">
                 <div className="cell-title" title={j.title}>{j.title}</div>
                 <div className="cell-sub" title={`${j.company} • ${j.source}`}>{j.company} • {j.source}</div>
@@ -178,7 +216,7 @@ export default function JobsTab({
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={7} className="muted">
+              <td colSpan={8} className="muted">
                 {loading ? STRINGS.loading : STRINGS.noJobs}
               </td>
             </tr>

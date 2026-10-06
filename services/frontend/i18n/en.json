@@ -169,6 +169,11 @@
   "scoreDist": "Score distribution",
   "scoreEmpty": "Top score {max}, threshold {threshold}. Check the REVIEW list.",
   "reviewList": "REVIEW list",
+  "prepareSelected": "Prepare ({count})",
+  "confirmPrepare": "Prepare {count} selected jobs? Documents and form analysis will be queued; nothing will be filled or submitted.",
+  "preparing": "Preparing…",
+  "selectAllPage": "Select page",
+  "tooManySelected": "Select at most 20 jobs.",
   "status": {
     "created": "Created",
     "discovered": "Discovered",

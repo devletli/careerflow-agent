@@ -24,6 +24,7 @@ from app.routers import (
     events,
     inbox,
     jobs,
+    jobs_prepare,
     pipeline,
     stats,
     status,
@@ -102,6 +103,6 @@ async def health() -> JSONResponse:
     )
 
 
-for _router in (status, jobs, applications_core, applications_actions, applications_documents, applications_interviews, documents, events, pipeline, confirmations, inbox, stats):
+for _router in (status, jobs, jobs_prepare, applications_core, applications_actions, applications_documents, applications_interviews, documents, events, pipeline, confirmations, inbox, stats):
     app.include_router(_router.router)
 app.include_router(applications_interviews.nested_router)

@@ -68,6 +68,10 @@
   "GET"
  ],
  [
+  "/api/v1/inbox",
+  "GET"
+ ],
+ [
   "/api/v1/interviews",
   "GET"
  ],
@@ -84,6 +88,10 @@
   "GET"
  ],
  [
+  "/api/v1/jobs/prepare",
+  "POST"
+ ],
+ [
   "/api/v1/jobs/{job_id}",
   "DELETE"
  ],
@@ -98,6 +106,10 @@
  [
   "/api/v1/pipeline/actions",
   "POST"
+ ],
+ [
+  "/api/v1/stats/score-distribution",
+  "GET"
  ],
  [
   "/api/v1/status",

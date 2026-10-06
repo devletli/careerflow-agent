@@ -68,6 +68,10 @@ export default function Home() {
   const [appsMinScore, setAppsMinScore] = usePersistentState("applications.minScore", "");
   const [docsQuery, setDocsQuery] = usePersistentState("documents.query", "");
   const [eventsQuery, setEventsQuery] = usePersistentState("events.query", "");
+  // Toplu seçim üst bileşendedir: polling ve sayfa değişiminden sağ çıkar.
+  const [selectedJobIds, setSelectedJobIds] = usePersistentState("jobs.selected", []);
+  const [preparing, setPreparing] = useState(false);
+  const [prepareMessage, setPrepareMessage] = useState("");
 
   const dJobsQuery = useDebouncedValue(jobsQuery).trim();
   const dAppsQuery = useDebouncedValue(appsQuery).trim();
@@ -335,6 +339,53 @@ export default function Home() {
     }
   }, [deleteTarget, deletingId, jobsRefresh, applicationsQ, documentsQ, eventsQ]);
 
+  const toggleSelectJob = useCallback((id) => {
+    setSelectedJobIds((prev) => {
+      const set = new Set(prev || []);
+      if (set.has(id)) set.delete(id);
+      else set.add(id);
+      return [...set];
+    });
+  }, [setSelectedJobIds]);
+
+  const toggleSelectPage = useCallback((pageIds, allSelected) => {
+    setSelectedJobIds((prev) => {
+      const set = new Set(prev || []);
+      if (allSelected) {
+        for (const id of pageIds) set.delete(id);
+      } else {
+        for (const id of pageIds) set.add(id);
+      }
+      return [...set].slice(0, 200);
+    });
+  }, [setSelectedJobIds]);
+
+  // Toplu "Hazırla": yalnızca /prepare ucu; fill/submit bu akışa girmez.
+  const prepareSelected = useCallback(async () => {
+    const ids = selectedJobIds || [];
+    if (ids.length === 0 || ids.length > 20 || preparing) return;
+    if (!window.confirm((STRINGS.confirmPrepare || "").replace("{count}", ids.length))) return;
+    setPreparing(true);
+    setPrepareMessage("");
+    try {
+      const byId = new Map((jobsList || []).map((j) => [j.id, j]));
+      const includeReview = ids.some((id) => byId.get(id)?.qualification_status === "REVIEW");
+      const result = await fetchJson("/api/v1/jobs/prepare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job_ids: ids.slice(0, 20), include_review: includeReview }),
+      });
+      const accepted = (result.results || []).filter((r) => r.result === "accepted").length;
+      setPrepareMessage(`${accepted}/${(result.results || []).length}`);
+      setSelectedJobIds([]);
+      jobsRefresh();
+    } catch (error) {
+      setPrepareMessage(error.message);
+    } finally {
+      setPreparing(false);
+    }
+  }, [selectedJobIds, preparing, jobsList, setSelectedJobIds, jobsRefresh]);
+
   const archiveJob = useCallback(async (job, userStatus) => {
     if (!job?.id || archivingId) return;
     setArchivingId(job.id);
@@ -412,6 +463,12 @@ export default function Home() {
           archivingId={archivingId}
           hideArchived={hideArchived}
           onHideArchivedChange={setHideArchived}
+          selectedIds={selectedJobIds}
+          onToggleSelect={toggleSelectJob}
+          onToggleSelectPage={toggleSelectPage}
+          preparing={preparing}
+          prepareMessage={prepareMessage}
+          onPrepare={prepareSelected}
         />
       )}
       {tab === "Applications" && (

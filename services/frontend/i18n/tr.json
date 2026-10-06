@@ -169,6 +169,11 @@
   "scoreDist": "Skor dağılımı",
   "scoreEmpty": "En yüksek skor {max}, eşik {threshold}. REVIEW listesine bak.",
   "reviewList": "REVIEW listesi",
+  "prepareSelected": "Hazırla ({count})",
+  "confirmPrepare": "{count} seçili ilan hazırlanacak. Belgeler ve form analizi kuyruğa girer; doldurma/gönderim yapılmaz.",
+  "preparing": "Hazırlanıyor…",
+  "selectAllPage": "Sayfayı seç",
+  "tooManySelected": "En fazla 20 ilan seçin.",
   "status": {
     "created": "Oluşturuldu",
     "discovered": "Bulundu",

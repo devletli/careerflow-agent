@@ -8,10 +8,15 @@ aksiyonların kodunu ve mevcut sözleşme assert'lerini korur:
 - kartlar ilgili filtreli listeye gider (status/band filtresi kurulur).
 """
 from pathlib import Path
+import sys
 
 from tests.unit._frontend_src import read_frontend_sources
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+if str(ROOT / "services" / "api") not in sys.path:
+    sys.path.insert(0, str(ROOT / "services" / "api"))
 OVERVIEW = ROOT / "services" / "frontend" / "app" / "components" / "tabs" / "OverviewTab.js"
 PAGE = ROOT / "services" / "frontend" / "app" / "page.js"
 
