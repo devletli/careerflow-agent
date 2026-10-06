@@ -68,6 +68,19 @@ async def click_next(page: Page) -> bool:
     return False
 
 
+async def wait_for_content(page: Page, timeout_ms: int = 15_000) -> bool:
+    """Sayfa içeriği (en az bir görünür düğme) belirene kadar bekler.
+
+    Yönlendirme sonrası DOM henüz boşken tarama yapılmasın diye; süre
+    dolarsa False döner (akış aynen devam eder, beklemez).
+    """
+    try:
+        await page.get_by_role("button").first.wait_for(state="visible", timeout=timeout_ms)
+        return True
+    except Exception:
+        return False
+
+
 async def click_form_opener(page: Page) -> bool:
     """Click a form-opening button (never a submit button).
 

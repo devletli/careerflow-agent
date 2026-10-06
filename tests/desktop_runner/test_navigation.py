@@ -144,6 +144,40 @@ async def test_click_form_opener_reveals_form_never_submits():
 
 
 @pytest.mark.asyncio
+async def test_wait_for_content_true_when_button_appears():
+    from playwright.async_api import async_playwright
+
+    nav = _load("navigation")
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        try:
+            page = await (await browser.new_context()).new_page()
+            await page.set_content("<html><body><p>yukleniyor</p></body></html>")
+            await page.evaluate(
+                "setTimeout(() => { const b = document.createElement('button');"
+                " b.textContent = 'Apply for this job'; document.body.append(b); }, 300)"
+            )
+            assert await nav.wait_for_content(page, timeout_ms=5000) is True
+        finally:
+            await browser.close()
+
+
+@pytest.mark.asyncio
+async def test_wait_for_content_false_on_timeout():
+    from playwright.async_api import async_playwright
+
+    nav = _load("navigation")
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        try:
+            page = await (await browser.new_context()).new_page()
+            await page.set_content("<html><body><p>dugme yok</p></body></html>")
+            assert await nav.wait_for_content(page, timeout_ms=500) is False
+        finally:
+            await browser.close()
+
+
+@pytest.mark.asyncio
 async def test_click_form_opener_returns_false_without_opener():
     from playwright.async_api import async_playwright
 

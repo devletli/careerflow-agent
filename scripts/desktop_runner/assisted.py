@@ -40,6 +40,7 @@ from desktop_runner.navigation import (
     click_next,
     dismiss_cookie_banner,
     is_submit_label,
+    wait_for_content,
 )
 
 REASONS = {
@@ -312,6 +313,8 @@ async def run_assisted(
     await ensure_panel_script(ctx)
     page = await ctx.new_page()
     await page.goto(app_url, wait_until="domcontentloaded", timeout=45_000)
+    # Boş sayfa normaldir (yeni sekme); içerik belirmeden tarama yapılmaz.
+    await wait_for_content(page)
 
     summary = AssistSummary()
     opener_tried = False
@@ -353,7 +356,7 @@ async def run_assisted(
                 if await click_form_opener(page):
                     opener_tried = True
                     logger.info("Form açıcı tıklandı, form taranıyor.")
-                    await page.wait_for_timeout(1_500)
+                    await wait_for_content(page)
                     continue
                 logger.info("Form açıcı bulunamadı, bitiriliyor.")
             break
