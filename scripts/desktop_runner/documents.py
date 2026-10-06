@@ -102,15 +102,34 @@ def prepare_upload_files(
     return prepared
 
 
-def _slot_for_file_input(field_key: str) -> str:
-    if "cover" in field_key or "letter" in field_key:
+def _slot_for_file_input(field_key: str, accept: str = "") -> str:
+    """Determine which document slot this file input expects.
+
+    Heuristics:
+    - If field key mentions cover/letter -> cover_letter
+    - If accept includes image/video/audio (typical for resume/CV uploads
+      that also accept headshots/videos) -> resume
+    - If field key mentions resume/cv -> resume
+    - Default: first unseen slot (resume first, then cover_letter)
+    """
+    fk = (field_key or "").lower()
+    acc = (accept or "").lower()
+
+    if "cover" in fk or "letter" in fk:
         return "cover_letter"
+    if "resume" in fk or "cv" in fk:
+        return "resume"
+    # Ashby resume field has image/video/audio in accept
+    if "image" in acc or "video" in acc or "audio" in acc:
+        return "resume"
+    # Default fallback: alternate
     return "resume"
 
 
 async def attach_files(page: Page, prepared: dict[str, Path]) -> list[str]:
     """Set file inputs from prepared temp files. Returns attached slots."""
     attached: list[str] = []
+    used_slots: set[str] = set()
 
     def normalized(value: str) -> str:
         return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
@@ -118,10 +137,17 @@ async def attach_files(page: Page, prepared: dict[str, Path]) -> list[str]:
     for index in range(await page.locator("input[type='file']").count()):
         field = page.locator("input[type='file']").nth(index)
         try:
-            # Gizli input'lar da baglanir (set_input_files gorunurluk
-            # istemez; gercek Lever/Greenhouse girdileri gizlidir).
             if not await field.is_enabled():
                 continue
+            # Get label text for better field key (Ashby puts field name in label)
+            label_text = None
+            try:
+                label_text = await field.evaluate(
+                    "(el) => (el.labels ? Array.from(el.labels).map(l => l.innerText).join(' ') : '')"
+                )
+            except Exception:
+                pass
+            accept = await field.get_attribute("accept") or ""
             field_key = normalized(
                 " ".join(
                     filter(
@@ -129,16 +155,26 @@ async def attach_files(page: Page, prepared: dict[str, Path]) -> list[str]:
                         [
                             await field.get_attribute("name"),
                             await field.get_attribute("id"),
-                            await field.get_attribute("accept"),
+                            await field.get_attribute("autocomplete"),
+                            await field.get_attribute("placeholder"),
+                            await field.get_attribute("aria-label"),
+                            label_text,
+                            accept,
                         ],
                     )
                 )
             )
-            slot = _slot_for_file_input(field_key)
+            slot = _slot_for_file_input(field_key, accept)
+            # If slot already used, try the other one
+            if slot in used_slots:
+                other = "cover_letter" if slot == "resume" else "resume"
+                if other in prepared and other not in used_slots:
+                    slot = other
             path = prepared.get(slot)
             if path is not None and path.is_file():
                 await field.set_input_files(str(path))
                 attached.append(slot)
+                used_slots.add(slot)
         except Exception:
             continue
     return attached
