@@ -28,6 +28,14 @@ APPLY_LINK_RX = re.compile(
 MAX_ANCHORS = 200
 MAX_NAV_ATTEMPTS = 3
 
+# Basvuru baglantisi olamayacak sayfa yollari (or. blog yazisi
+# "Applying for German Citizenship" metindeki "apply" eslesmesi).
+NON_APPLICATION_PATH_RX = re.compile(
+    r"/blog/|/news/|/ratgeber/|datenschutz|privacy|cookie|legal|terms|"
+    r"impressum|/agb|site-notice",
+    re.I,
+)
+
 
 def _central_ats_from_url(url: str):
     """Merkezi tablo (browser.site_adapters.resolve); yoksa None."""
@@ -138,12 +146,18 @@ async def find_apply_links(page) -> tuple[list[str], list[str]]:
                 continue
         absolute = urljoin(base, href)
         try:
-            if urlparse(absolute).scheme not in ("http", "https"):
+            parsed = urlparse(absolute)
+            if parsed.scheme not in ("http", "https"):
+                continue
+            if NON_APPLICATION_PATH_RX.search(parsed.path or ""):
                 continue
         except Exception:
             continue
         if absolute not in http_urls:
             http_urls.append(absolute)
+    # /apply iceren adresler once denensin (guclu sinyal).
+    http_urls.sort(key=lambda u: ("/apply" not in u.lower()
+                                  and "bewerb" not in u.lower()))
     return http_urls, emails
 
 

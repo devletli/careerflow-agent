@@ -179,6 +179,51 @@ async def test_opener_and_blocker_pages_stay_in_loop(form_server):
             await browser.close()
 
 
+@pytest.mark.asyncio
+async def test_cross_host_redirect_keeps_form(form_server):
+    """Toplayici -> harici ATS: host farki formu gecersiz kilmaz."""
+    from playwright.async_api import async_playwright
+
+    target = _load("target")
+    assisted = _load("assisted")
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        try:
+            page = await (await browser.new_context()).new_page()
+            await page.goto(f"{form_server}/posting_with_apply_link.html")
+            # assisted.py ile ayni baglanti: teyit host-bagimsiz yapilir.
+            resolved = await target.resolve_target(
+                page, "https://aggregator.example/ilan/1",
+                form_like=False, blocked=False,
+                recheck_form=lambda p: assisted.looks_like_application_form(p, ""),
+            )
+            assert resolved["kind"] == "moved"
+            assert resolved["url"].endswith("/simple.html")
+        finally:
+            await browser.close()
+
+
+@pytest.mark.asyncio
+async def test_blog_links_are_not_apply_targets():
+    from playwright.async_api import async_playwright
+
+    target = _load("target")
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        try:
+            page = await (await browser.new_context()).new_page()
+            await page.set_content(
+                "<html><body>"
+                "<a href='https://x.example/blog/applying-for-citizenship'>"
+                "Applying for German Citizenship</a>"
+                "<a href='https://ats.example/j/1/apply'>Jetzt bewerben</a>"
+                "</body></html>")
+            http_urls, _ = await target.find_apply_links(page)
+            assert http_urls == ["https://ats.example/j/1/apply"]
+        finally:
+            await browser.close()
+
+
 def test_mailto_address_table():
     target = _load("target")
     assert target.mailto_address("mailto:a@b.de") == "a@b.de"

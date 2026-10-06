@@ -14,6 +14,7 @@ from browser.site_adapters.resolve import ats_from_url, detect_ats, host_of
     ("https://acme.workable.com/j/123", "workable"),
     ("https://jobs.ashbyhq.com/acme/1", "ashby"),
     ("https://acme.smartrecruiters.com/j/1", "smartrecruiters"),
+    ("https://vertigis.recruitee.com/o/cloud-engineer-x", "recruitee"),
     ("https://acme.personio.de/a/1", "personio"),
     ("https://join.com/companies/x/1", "join"),
     ("https://acme.softgarden.io/a/1", "softgarden"),

@@ -25,6 +25,7 @@ ATS_HOSTS = {
     "join.com": "join",
     "softgarden.de": "softgarden",
     "softgarden.io": "softgarden",
+    "recruitee.com": "recruitee",
 }
 
 

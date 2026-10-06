@@ -492,7 +492,10 @@ async def run_assisted(
         app_url,
         form_like=await looks_like_application_form(page, app_url),
         blocked=await detect_blocker(page) is not None,
-        recheck_form=lambda p: looks_like_application_form(p, app_url),
+        # Yonlendirme sonrasi host bilerek kontrol edilmez: toplayicidan
+        # harici ATS'ye gecis normal akistir (host esitligi ilk URL icin
+        # gecerli, bkz. looks_like_application_form).
+        recheck_form=lambda p: looks_like_application_form(p, ""),
     )
     summary.ats = target.get("ats", "generic")
     summary.target_kind = target.get("kind", "form")
