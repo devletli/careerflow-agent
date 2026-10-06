@@ -5,6 +5,8 @@ import asyncio
 import json
 import logging
 import re
+import sys
+import tempfile
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -12,9 +14,11 @@ from pathlib import Path
 import yaml
 from playwright.async_api import Page, async_playwright
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from desktop_runner.config import DesktopSettings  # noqa: E402
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 API_BASE_URL = "http://localhost:8000"
-USER_DATA_DIRECTORY = PROJECT_ROOT / "browser-state" / "desktop-profile"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("desktop-runner")
@@ -161,18 +165,28 @@ async def upload_documents(page: Page, document_paths: dict) -> None:
                 await field.set_input_files(str(document_path))
 
 
-async def run(application_uri: str) -> None:
+async def run(application_uri: str, *, fresh_profile: bool = False) -> None:
     application_id = application_id_from_uri(application_uri)
     context = request_context(application_id)
     profile = load_profile()
-    USER_DATA_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    settings = DesktopSettings.from_env()
+    if fresh_profile:
+        user_data_dir = Path(tempfile.mkdtemp(prefix="careerflow-desktop-"))
+    else:
+        user_data_dir = settings.profile_dir
+        user_data_dir.mkdir(parents=True, exist_ok=True)
     (PROJECT_ROOT / "browser-traces").mkdir(parents=True, exist_ok=True)
 
+    launch_kwargs: dict = {
+        "headless": False,
+        "viewport": {"width": 1440, "height": 1000},
+    }
+    if settings.browser_channel != "chromium":
+        launch_kwargs["channel"] = settings.browser_channel
     async with async_playwright() as playwright:
         browser_context = await playwright.chromium.launch_persistent_context(
-            str(USER_DATA_DIRECTORY),
-            headless=False,
-            viewport={"width": 1440, "height": 1000},
+            str(user_data_dir),
+            **launch_kwargs,
         )
         page = browser_context.pages[0] if browser_context.pages else await browser_context.new_page()
         await fill_form(page, context, profile)
@@ -189,9 +203,14 @@ async def run(application_uri: str) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("application_uri")
+    parser.add_argument(
+        "--fresh-profile",
+        action="store_true",
+        help="Gecici bir tarayici profili ac (oturum saklanmaz).",
+    )
     args = parser.parse_args()
     try:
-        asyncio.run(run(args.application_uri))
+        asyncio.run(run(args.application_uri, fresh_profile=args.fresh_profile))
     except (RuntimeError, ValueError) as exc:
         logger.error("AI Job Agent desktop runner error: %s", exc)
         raise SystemExit(1) from exc
