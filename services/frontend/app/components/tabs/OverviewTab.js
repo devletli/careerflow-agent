@@ -96,8 +96,9 @@ const ACTIONS = STRINGS.actions;
 
 function ActionPanel({ onRun, runningAction, actionMessage }) {
   return (
-    <div className="panel" style={{ marginBottom: 16 }}>
-      <h3 style={{ marginTop: 0 }}>{STRINGS.pipelineControls}</h3>
+    <details className="panel" style={{ marginBottom: 16 }}>
+      <summary style={{ cursor: "pointer", fontWeight: 600 }}>{STRINGS.advanced}</summary>
+      <h3 style={{ marginTop: 8 }}>{STRINGS.pipelineControls}</h3>
       <p className="muted">{STRINGS.pipelineControlsDesc}</p>
       {actionMessage && <div className="action-message">{actionMessage}</div>}
       <div className="action-grid">
@@ -115,38 +116,37 @@ function ActionPanel({ onRun, runningAction, actionMessage }) {
           </div>
         ))}
       </div>
+    </details>
+  );
+}
+
+function InboxCards({ inbox, onNavigate }) {
+  // Sekme adları i18n'e göre değişir; TABS sırası sabittir (1=Jobs, 3=Applications).
+  const cards = [
+    { label: STRINGS.inboxNeedsYou, value: inbox?.needs_you, go: () => onNavigate(3, { status: "REQUIRES_HUMAN" }) },
+    { label: STRINGS.inboxReady, value: inbox?.ready, go: () => onNavigate(3, { status: "READY_TO_SUBMIT" }) },
+    { label: STRINGS.inboxFailed, value: inbox?.failed, go: () => onNavigate(3, { status: "FAILED" }) },
+    { label: STRINGS.inboxToPrepare, value: inbox?.to_prepare, go: () => onNavigate(3, { status: "CREATED" }) },
+    { label: STRINGS.inboxNewStrong, value: inbox?.new_strong_matches, go: () => onNavigate(1, { band: "QUALIFIED" }) },
+  ];
+  return (
+    <div className="stat-grid" style={{ marginBottom: 16 }}>
+      {cards.map((c) => (
+        <button key={c.label} className="stat-card" onClick={c.go} style={{ cursor: "pointer", textAlign: "left" }}>
+          <div className="value">{c.value ?? "–"}</div>
+          <div className="label">{c.label}</div>
+        </button>
+      ))}
     </div>
   );
 }
 
-export default function OverviewTab({ status, jobs, applications, events, eventsLoading, onRun, runningAction, actionMessage }) {
-  const jobCount = jobs?.length ?? 0;
-  const appCount = applications?.length ?? 0;
-  const submitted = (applications || []).filter((a) => a.status === "SUBMITTED").length;
-  const blocked = (applications || []).filter((a) => a.status === "BLOCKED").length;
-
+export default function OverviewTab({ status, applications, inbox, onNavigate, events, eventsLoading, onRun, runningAction, actionMessage }) {
   return (
     <div>
+      <InboxCards inbox={inbox} onNavigate={onNavigate} />
       <FollowUpPanel applications={applications} />
       <ActionPanel onRun={onRun} runningAction={runningAction} actionMessage={actionMessage} />
-      <div className="stat-grid">
-        <div className="stat-card">
-          <div className="value">{jobCount}</div>
-          <div className="label">{STRINGS.statJobs}</div>
-        </div>
-        <div className="stat-card">
-          <div className="value">{appCount}</div>
-          <div className="label">{STRINGS.statApplications}</div>
-        </div>
-        <div className="stat-card">
-          <div className="value">{submitted}</div>
-          <div className="label">{STRINGS.statSubmitted}</div>
-        </div>
-        <div className="stat-card">
-          <div className="value">{blocked}</div>
-          <div className="label">{STRINGS.statBlocked}</div>
-        </div>
-      </div>
       <div className="panel">
         <h3 style={{ marginTop: 0 }}>{STRINGS.automationConfig}</h3>
         {status ? (

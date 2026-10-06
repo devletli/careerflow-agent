@@ -160,6 +160,12 @@
   "explainBtn": "Açıkla",
   "explaining": "Açıklama üretiliyor…",
   "explainFailed": "Açıklama üretilemedi.",
+  "inboxNeedsYou": "Seni bekleyen",
+  "inboxReady": "Gönderime hazır",
+  "inboxFailed": "Başarısız",
+  "inboxToPrepare": "Hazırlanacak",
+  "inboxNewStrong": "Yeni güçlü eşleşme",
+  "advanced": "Gelişmiş",
   "status": {
     "created": "Oluşturuldu",
     "discovered": "Bulundu",

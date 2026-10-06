@@ -160,6 +160,12 @@
   "explainBtn": "Explain",
   "explaining": "Generating explanation…",
   "explainFailed": "Explanation failed.",
+  "inboxNeedsYou": "Needs you",
+  "inboxReady": "Ready to submit",
+  "inboxFailed": "Failed",
+  "inboxToPrepare": "To prepare",
+  "inboxNewStrong": "New strong matches",
+  "advanced": "Advanced",
   "status": {
     "created": "Created",
     "discovered": "Discovered",

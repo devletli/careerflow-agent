@@ -183,6 +183,14 @@ export default function Home() {
     `docs:${dDocsQuery}`
   );
   const eventsQ = usePolling(`/api/v1/events?limit=50${qParam(dEventsQuery)}`);
+  const inboxQ = usePolling("/api/v1/inbox");
+
+  // Eylem kutusu kartları: ilgili filtreli listeye gider (TABS sırası sabittir).
+  const navigateInbox = useCallback((tabIdx, patch) => {
+    selectTab(TABS[tabIdx]);
+    if (patch?.status !== undefined) setAppsStatus(patch.status);
+    if (patch?.band !== undefined) setJobsBand(patch.band);
+  }, [selectTab, setAppsStatus, setJobsBand]);
 
   const runAction = useCallback(async (action) => {
     const requiresExtraWarning = action.id === "fill_applications";
@@ -366,8 +374,9 @@ export default function Home() {
       {tab === "Overview" && (
         <OverviewTab
           status={statusQ.data}
-          jobs={jobsList}
           applications={applicationsQ.items}
+          inbox={inboxQ.data}
+          onNavigate={navigateInbox}
           events={eventsQ.data}
           eventsLoading={eventsQ.loading}
           onRun={runAction}
