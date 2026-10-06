@@ -30,6 +30,46 @@ class AutomationMode(str, Enum):
     FULL_AUTO = "FULL_AUTO"
 
 
+class ApplicationLifecycle(str, Enum):
+    """Human application lifecycle (independent from automation `status`)."""
+
+    DRAFT = "DRAFT"
+    PREPARED = "PREPARED"
+    APPLIED = "APPLIED"
+    INTERVIEW = "INTERVIEW"
+    OFFER = "OFFER"
+    REJECTED = "REJECTED"
+    WITHDRAWN = "WITHDRAWN"
+
+
+class ApplicationMethod(str, Enum):
+    MANUAL = "MANUAL"
+    AUTOMATED = "AUTOMATED"
+
+
+class JobUserStatus(str, Enum):
+    """Human job-board state (independent from pipeline `status`)."""
+
+    NEW = "NEW"
+    INTERESTED = "INTERESTED"
+    SHORTLISTED = "SHORTLISTED"
+    IGNORED = "IGNORED"
+    ARCHIVED = "ARCHIVED"
+
+
+class ApplicationDocumentRole(str, Enum):
+    CV = "CV"
+    COVER_LETTER = "COVER_LETTER"
+    OTHER = "OTHER"
+
+
+class InterviewResult(str, Enum):
+    PENDING = "PENDING"
+    PASSED = "PASSED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+
 class QuestionClassification(str, Enum):
     SAFE_FACT = "SAFE_FACT"
     SAFE_TRANSFORMATION = "SAFE_TRANSFORMATION"

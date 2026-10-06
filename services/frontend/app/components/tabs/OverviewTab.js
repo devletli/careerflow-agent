@@ -1,7 +1,96 @@
 "use client";
 
-import { STRINGS } from "../../lib";
+import { useEffect, useState } from "react";
+import { fetchJson, STRINGS } from "../../lib";
 import { EventsTable, formatLlmStatus } from "../shared";
+
+function dayKey(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function FollowUpPanel({ applications }) {
+  const [upcoming, setUpcoming] = useState([]);
+  const [overdueFetch, setOverdueFetch] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    // Refetch when the polled applications change so newly scheduled
+    // interviews / due dates appear without a full page reload. Overdue is
+    // also fetched server-side so items beyond the first 100 applications
+    // still surface here.
+    Promise.all([
+      fetchJson("/api/v1/interviews?upcoming=true&limit=20").catch(() => []),
+      fetchJson("/api/v1/applications?overdue=true&limit=100").catch(() => []),
+    ]).then(([ivRows, overdueRows]) => {
+      if (cancelled) return;
+      setUpcoming(ivRows || []);
+      setOverdueFetch(overdueRows || []);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [applications]);
+  const now = new Date();
+  const today = dayKey(now.toISOString());
+  const groups = { overdue: [], today: [], upcomingActions: [] };
+  const seen = new Set();
+  for (const a of [...(overdueFetch || []), ...(applications || [])]) {
+    if (!a.next_action_due_at || seen.has(a.id)) continue;
+    seen.add(a.id);
+    const due = new Date(a.next_action_due_at);
+    const entry = { id: a.id, label: `${a.company} — ${a.title}`, detail: a.next_action, due: a.next_action_due_at };
+    if (due < now) { groups.overdue.push(entry); }
+    else if (dayKey(a.next_action_due_at) === today) groups.today.push(entry);
+    else groups.upcomingActions.push(entry);
+  }
+  const empty = groups.overdue.length === 0 && groups.today.length === 0
+    && groups.upcomingActions.length === 0 && upcoming.length === 0;
+  return (
+    <div className="panel" style={{ marginBottom: 16 }}>
+      <h3 style={{ marginTop: 0 }}>{STRINGS.followUp}</h3>
+      {empty && <p className="muted">{STRINGS.noFollowUps}</p>}
+      {groups.overdue.length > 0 && (
+        <div className="settings-item">
+          <div className="label">⚠ {STRINGS.overdue}</div>
+          <div className="value">
+            {groups.overdue.map((g) => (
+              <div key={g.id}><a className="link" href={`/applications/${g.id}`}>{g.label}</a> — {g.detail || ""} ({g.due.slice(0, 10)})</div>
+            ))}
+          </div>
+        </div>
+      )}
+      {groups.today.length > 0 && (
+        <div className="settings-item">
+          <div className="label">{STRINGS.dueToday}</div>
+          <div className="value">
+            {groups.today.map((g) => (
+              <div key={g.id}><a className="link" href={`/applications/${g.id}`}>{g.label}</a> — {g.detail || ""}</div>
+            ))}
+          </div>
+        </div>
+      )}
+      {groups.upcomingActions.length > 0 && (
+        <div className="settings-item">
+          <div className="label">{STRINGS.upcoming}</div>
+          <div className="value">
+            {groups.upcomingActions.map((g) => (
+              <div key={g.id}><a className="link" href={`/applications/${g.id}`}>{g.label}</a> — {g.detail || ""} ({g.due.slice(0, 10)})</div>
+            ))}
+          </div>
+        </div>
+      )}
+      {upcoming.length > 0 && (
+        <div className="settings-item">
+          <div className="label">{STRINGS.upcomingInterviews}</div>
+          <div className="value">
+            {upcoming.map((iv) => (
+              <div key={iv.id}><a className="link" href={`/applications/${iv.application_id}`}>{iv.company} — {iv.title}</a> — {iv.round || ""} ({(iv.scheduled_at || "").slice(0, 16).replace("T", " ")})</div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const ACTIONS = STRINGS.actions;
 
@@ -38,6 +127,7 @@ export default function OverviewTab({ status, jobs, applications, events, events
 
   return (
     <div>
+      <FollowUpPanel applications={applications} />
       <ActionPanel onRun={onRun} runningAction={runningAction} actionMessage={actionMessage} />
       <div className="stat-grid">
         <div className="stat-card">

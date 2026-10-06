@@ -1,1918 +1,1032 @@
-# CAREERFLOW-AGENT — SENIOR ARCHITECT / DEVOPS / SOFTWARE ENGINEER TASK
+# CAREERFLOW — CONTINUOUS JOB DISCOVERY + GLOBAL MATCH SCORE RANKING
 
 Repository:
 
 `https://github.com/devletli/careerflow-agent`
 
-Current branch:
+Act as:
 
-`main`
+* Senior Software Architect
+* Senior Backend Engineer
+* Senior Data Engineer
+* Senior DevOps Engineer
+* Senior PostgreSQL Engineer
 
-Known latest major repair commit:
+## PRIMARY GOAL
 
-`b1b765af550ebecdd14dd0118df78acb2bf1a684`
+The current system must NOT behave as:
 
-You are working as a SENIOR SOFTWARE ARCHITECT + SENIOR BACKEND ENGINEER + SENIOR FRONTEND ENGINEER + DEVOPS ENGINEER.
+```text
+Search jobs
+    ↓
+100 jobs
+    ↓
+STOP
+```
 
-Do NOT blindly rewrite the project.
+The desired behavior is:
 
-First inspect the CURRENT repository state completely.
+```text
+Continuous job discovery
+        ↓
+Hundreds / thousands of jobs
+        ↓
+Deduplicate
+        ↓
+Persist ALL unique jobs
+        ↓
+Calculate match score
+        ↓
+Persist match score
+        ↓
+Jobs UI sorts ALL jobs by match score DESC
+        ↓
+Pagination only controls how many rows are displayed
+```
 
-The project already has a deliberately designed microservice architecture:
+The number `100` may be a UI page size.
 
-Frontend
-→ API
-→ PostgreSQL
-→ Redis Streams
-→ workers/services
-→ MinIO
-
-The architecture document explicitly defines PostgreSQL as authoritative state and Redis as transport/event infrastructure.
-
-The current system contains:
-
-* FastAPI API
-* Next.js frontend
-* PostgreSQL
-* Redis Streams
-* MinIO
-* Playwright browser-agent
-* job discovery
-* matching
-* CV/document generation
-* application analysis
-* application automation
-* Docker Compose
-* Alembic migrations
-* tests
-* GitHub Actions CI
-* security controls
-* correlation IDs
-* idempotency
-* human-in-the-loop application submission
-
-Do NOT simplify the microservice architecture unless there is a demonstrable technical reason.
-
-For this task, prioritize correctness, maintainability, UI usability, API consistency, data integrity and testability.
+It must NEVER be a global discovery limit.
 
 ---
 
-# 1. FIRST: REPOSITORY AUDIT
+# 1. FIRST AUDIT THE CURRENT IMPLEMENTATION
 
-Before changing code, inspect at minimum:
+Before changing anything inspect the current repository.
+
+Search for ALL occurrences of:
 
 ```text
-README.md
-SPEC.md
-architecture.md
-data-model.md
-security.md
-docker-compose.yml
-pyproject.toml
-Makefile
-
-services/api/
-services/frontend/
-shared/
-db/
-tests/
-.github/workflows/
+limit
+LIMIT
+100
+page_size
+pageSize
+offset
+pagination
+jobs
+job_matches
+match_score
+score
+discovery
+search
+scrape
+source
+max_pages
+max_results
 ```
 
-Also inspect:
+Especially inspect:
 
 ```text
-services/frontend/app/page.js
-services/frontend/app/lib.js
-services/frontend/app/globals.css
-
-services/frontend/app/components/tabs/JobsTab.js
-services/frontend/app/components/tabs/ApplicationsTab.js
-services/frontend/app/components/tabs/DocumentsTab.js
-
-services/api/app/main.py
 services/api/app/routers/jobs.py
-services/api/app/routers/applications_core.py
-services/api/app/routers/applications_actions.py
-services/api/app/routers/applications_documents.py
-services/api/app/routers/documents.py
-
+services/api/app/routers/job_matches.py
+services/api/app/
 shared/db/models.py
-db/migrations/*
-```
-
-Do not assume endpoint names.
-
-Search the entire repository for:
-
-```text
-DELETE
-@router.delete
-fetchJson(
-method: "DELETE"
-session.delete(
-MinIO delete
-delete_object
-cascade
-ondelete
-ForeignKey
-Document
-Application
-Job
-```
-
-Create a short internal implementation map before editing:
-
-```text
-ENTITY
-  ↓
-FRONTEND COMPONENT
-  ↓
-FRONTEND ACTION
-  ↓
-API ENDPOINT
-  ↓
-SERVICE / DB OPERATION
-  ↓
-POSTGRES
-  ↓
-MINIO / REDIS / EVENTS if applicable
-  ↓
-REFRESH / UI STATE
-  ↓
-TEST
-```
-
----
-
-# 2. CRITICAL REQUIREMENT: DELETE JOBS
-
-Add a real DELETE operation for Jobs.
-
-The UI currently renders jobs in:
-
-```text
+db/migrations/
 services/frontend/app/components/tabs/JobsTab.js
+services/frontend/app/
+workers/
+automation/
+scripts/
+docker-compose.yml
 ```
 
-The existing table has:
+Also inspect the actual discovery implementation.
 
-```jsx
-<th>{STRINGS.colLink}</th>
-```
+DO NOT assume that the 100 limit is only in the frontend.
 
-and currently ends with:
-
-```jsx
-<td data-label={STRINGS.colLink}>
-  <a
-    className="link"
-    href={j.url}
-    target="_blank"
-    rel="noreferrer"
-  >
-    {STRINGS.viewLink}
-  </a>
-</td>
-```
-
-This must become an explicit Actions column.
-
-Example target structure:
-
-```jsx
-<th>{STRINGS.colActions}</th>
-```
-
-and:
-
-```jsx
-<td
-  data-label={STRINGS.colActions}
-  className="actions-sticky"
->
-  <a
-    className="link"
-    href={j.url}
-    target="_blank"
-    rel="noreferrer"
-  >
-    {STRINGS.viewLink}
-  </a>
-
-  <button
-    type="button"
-    className="danger-btn"
-    onClick={() => onDelete(j)}
-    disabled={deletingId === j.id}
-  >
-    {deletingId === j.id
-      ? STRINGS.deleting
-      : STRINGS.deleteBtn}
-  </button>
-</td>
-```
-
-BUT:
-
-Do not implement this until the backend DELETE contract has been verified.
-
-Backend should provide:
-
-```http
-DELETE /api/v1/jobs/{job_id}
-```
-
-Expected behavior:
-
-1. Validate API key.
-2. Validate UUID.
-3. Find Job.
-4. Return 404 if missing.
-5. Determine related applications/documents/matches/etc.
-6. Apply correct referential deletion policy.
-7. Delete associated MinIO artifacts where appropriate.
-8. Delete PostgreSQL records safely.
-9. Commit transaction.
-10. Return a deterministic response.
-11. Never leave orphaned DB or MinIO artifacts.
-12. Never delete another unrelated job's documents.
-
-Preferred response:
-
-```json
-{
-  "id": "JOB_UUID",
-  "deleted": true
-}
-```
-
-or HTTP `204 No Content`.
-
-Choose ONE convention and use it consistently for all delete endpoints.
+Find every place where discovery can stop after 100 results.
 
 ---
 
-# 3. CRITICAL REQUIREMENT: DELETE APPLICATIONS
+# 2. DISTINGUISH THREE DIFFERENT LIMITS
 
-Applications currently have sophisticated state-based actions:
+These concepts MUST NOT be mixed.
 
-```text
-CREATED
-READY_TO_SUBMIT
-RUNNING
-FILLING
-SUBMITTING
-REQUIRES_HUMAN
-BLOCKED
-FAILED
-SUBMITTED
-```
-
-Do NOT break this state machine.
-
-The existing `ApplicationsTab.js` contains:
-
-```jsx
-function getAvailableActions(application) {
-  switch (application.status) {
-    case "CREATED":
-      return ["prepare"];
-
-    case "READY_TO_SUBMIT":
-    case "READY_TO_APPLY":
-      return ["submit"];
-
-    case "RUNNING":
-    case "FILLING":
-    case "SUBMITTING":
-      return ["view"];
-
-    case "REQUIRES_HUMAN":
-    case "BLOCKED":
-      return ["continue"];
-
-    case "FAILED":
-      return ["retry"];
-
-    case "SUBMITTED":
-      return ["details"];
-
-    default:
-      return [];
-  }
-}
-```
-
-Add delete independently from this state-machine action list.
-
-Do NOT make delete depend on `getAvailableActions()`.
-
-Add:
-
-```jsx
-<button
-  type="button"
-  className="danger-btn"
-  onClick={() => onDelete(a)}
-  disabled={busyId === a.id}
->
-  {STRINGS.deleteBtn}
-</button>
-```
-
-However, deleting an application requires backend support.
-
-Implement:
-
-```http
-DELETE /api/v1/applications/{application_id}
-```
-
-Rules:
-
-* 404 if application does not exist.
-* Delete only the requested application.
-* Do not accidentally delete the Job.
-* Handle related ApplicationQuestion records.
-* Handle ApplicationAnswer records.
-* Handle AutomationRun records.
-* Handle application-related events correctly.
-* Handle linked Documents according to the actual DB model.
-* Do not delete documents belonging to another application.
-* Clean up MinIO artifacts only when ownership/reference rules say they are no longer needed.
-* Preserve job data unless the Job itself is explicitly deleted.
-* Do not publish misleading `application.submitted` or other business events when deleting.
-* If an audit/event record must remain, preserve an appropriate deletion/audit record rather than destroying the entire audit trail blindly.
-
-IMPORTANT:
-
-Before implementing cascade deletion, inspect:
-
-```text
-shared/db/models.py
-```
-
-and all foreign keys.
-
-Do not invent cascade behavior.
-
----
-
-# 4. CRITICAL REQUIREMENT: DELETE DOCUMENTS
-
-Current Documents UI:
-
-```text
-services/frontend/app/components/tabs/DocumentsTab.js
-```
-
-currently renders:
-
-```jsx
-<td data-label={STRINGS.colFile} className="document-actions">
-  <a
-    className="link"
-    href={document.view_url}
-    target="_blank"
-    rel="noreferrer"
-  >
-    {STRINGS.viewFile}
-  </a>
-</td>
-```
-
-Add:
-
-```jsx
-<button
-  type="button"
-  className="danger-btn"
-  onClick={() => onDelete(document)}
-  disabled={deletingId === document.id}
->
-  {deletingId === document.id
-    ? STRINGS.deleting
-    : STRINGS.deleteBtn}
-</button>
-```
-
-Backend:
-
-```http
-DELETE /api/v1/documents/{document_id}
-```
-
-This is especially important because Documents are not just DB rows.
-
-They contain MinIO storage information such as:
-
-```text
-document.minio_key
-document.minio_bucket
-```
-
-The existing backend explicitly uses MinIO to stream private artifacts.
-
-Therefore document deletion MUST be:
-
-```text
-validate document
-      ↓
-identify MinIO object
-      ↓
-delete DB record safely
-      ↓
-delete MinIO object
-      ↓
-commit / rollback correctly
-```
-
-Do NOT leave orphaned MinIO files.
-
-Also do NOT delete the MinIO object first without thinking about transaction failure.
-
-Design the deletion sequence carefully.
-
-If DB transaction succeeds but MinIO deletion fails, do NOT silently claim everything was deleted.
-
-Use the project's existing error/logging conventions.
-
----
-
-# 5. VERY IMPORTANT: DOCUMENT VERSIONING
-
-The current Documents endpoint deliberately returns only the latest document per:
-
-```text
-(job_id, type, language)
-```
-
-The backend calculates latest versions.
-
-The UI filters:
-
-```jsx
-const rows = (documents || []).filter((d) => d.is_latest);
-```
-
-Do not break this.
-
-Before deleting a document, determine:
-
-```text
-Is it latest?
-Is it referenced by an application?
-Is it an old version?
-Does another document depend on it?
-Does the DB store artifact metadata?
-```
-
-Deletion must respect the document version model.
-
-Do not blindly delete every version when the user clicks delete on one document.
-
----
-
-# 6. CASCADE POLICY
-
-Do NOT blindly use:
-
-```python
-cascade="all, delete-orphan"
-```
-
-everywhere.
-
-Do not add broad:
-
-```text
-ON DELETE CASCADE
-```
-
-without checking business semantics.
-
-Use this conceptual model:
-
-```text
-JOB
- ├── JobMatch
- ├── JobRequirement
- ├── Documents
- └── Applications
-       ├── Questions
-       ├── Answers
-       ├── AutomationRuns
-       └── application-related records
-```
-
-The correct deletion policy must be derived from the actual models.
-
-For Job deletion, determine whether:
-
-```text
-Job → Application
-```
-
-should cascade.
-
-If yes:
-
-```text
-DELETE JOB
-  → delete applications
-  → delete application questions
-  → delete application answers
-  → delete automation runs
-  → delete documents
-  → delete MinIO artifacts
-  → delete matches/requirements
-  → delete job
-```
-
-If the existing architecture intentionally preserves some historical records, implement that instead.
-
-The source of truth is the existing data model, not assumptions.
-
----
-
-# 7. FRONTEND DELETE UX
-
-Do NOT use ugly browser-native confirmation everywhere if a reusable project pattern exists.
-
-If the project has no reusable modal, implement a small reusable confirmation component.
+## A. Discovery batch size
 
 Example:
 
-```jsx
-function ConfirmDeleteDialog({
-  open,
-  title,
-  message,
-  onCancel,
-  onConfirm,
-  loading,
-}) {
-  if (!open) return null;
-
-  return (
-    <div className="modal-backdrop">
-      <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-      >
-        <h3>{title}</h3>
-
-        <p>{message}</p>
-
-        <div className="modal-actions">
-          <button
-            type="button"
-            className="refresh-btn"
-            onClick={onCancel}
-            disabled={loading}
-          >
-            Cancel
-          </button>
-
-          <button
-            type="button"
-            className="danger-btn"
-            onClick={onConfirm}
-            disabled={loading}
-          >
-            {loading ? "Deleting…" : "Delete"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-```
-
-Do NOT hard-code these strings in components.
-
-The project already has:
-
 ```text
-services/frontend/i18n/en.json
-services/frontend/i18n/tr.json
+100 jobs per API/search request
 ```
 
-and `lib.js` exposes:
+This is allowed.
 
-```jsx
-export const STRINGS = LOCALE === "tr"
-  ? trStrings
-  : enStrings;
-```
-
-Therefore add:
-
-```json
-{
-  "deleteBtn": "Delete",
-  "deleting": "Deleting…",
-  "cancelBtn": "Cancel",
-  "confirmDeleteJob": "Delete this job?",
-  "confirmDeleteApplication": "Delete this application?",
-  "confirmDeleteDocument": "Delete this document?",
-  "deleteJobDescription": "This will permanently remove the job and its dependent data.",
-  "deleteApplicationDescription": "This will permanently remove the application and its dependent application data.",
-  "deleteDocumentDescription": "This will permanently remove the document and its stored artifact."
-}
-```
-
-and equivalent Turkish translations.
-
-Do not introduce hard-coded user-visible English text.
-
----
-
-# 8. DO NOT ALLOW DOUBLE DELETE
-
-Frontend must prevent:
-
-```text
-double click
-multiple DELETE requests
-race condition
-stale UI
-```
+## B. Discovery session/page limit
 
 Example:
 
-```jsx
-const [deletingId, setDeletingId] = useState(null);
-
-async function handleDelete(item) {
-  if (!item?.id || deletingId) return;
-
-  setDeletingId(item.id);
-
-  try {
-    await fetchJson(`/api/v1/.../${item.id}`, {
-      method: "DELETE",
-    });
-
-    await refresh();
-  } finally {
-    setDeletingId(null);
-  }
-}
-```
-
-Improve this with proper error handling.
-
-Never silently swallow DELETE failures.
-
----
-
-# 9. IMPORTANT: REFRESH ALL DEPENDENT DATA
-
-After deleting a Job:
-
 ```text
-jobsQ.refresh()
-applicationsQ.refresh()
-documentsQ.refresh()
-eventsQ.refresh()
+source page 1
+source page 2
+source page 3
+...
 ```
 
-if those datasets can be affected.
+This should continue according to configured safety limits.
 
-After deleting an Application:
-
-```text
-applicationsQ.refresh()
-documentsQ.refresh()
-eventsQ.refresh()
-```
-
-if applicable.
-
-After deleting a Document:
-
-```text
-documentsQ.refresh()
-applicationsQ.refresh()
-```
-
-if document counts/badges are displayed in applications.
-
-The current `page.js` already has polling objects:
-
-```jsx
-const jobsQ = usePolling(...)
-const applicationsQ = usePolling(...)
-const documentsQ = usePolling(...)
-const eventsQ = usePolling(...)
-```
-
-Use these existing mechanisms.
-
-Do not create a second state-management architecture.
-
----
-
-# 10. UI TABLE WIDTH / SCROLL PROBLEM
-
-The previous work introduced:
-
-```css
-.app-shell {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  overflow: hidden;
-}
-
-.main-content {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.tab-panel {
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.table-wrapper {
-  height: 100%;
-  min-height: 0;
-  overflow: auto;
-}
-
-.table-fixed {
-  width: 100%;
-  table-layout: fixed;
-}
-
-.cell-truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.actions-sticky {
-  position: sticky;
-  right: 0;
-  z-index: 10;
-}
-```
-
-Do NOT simply remove these.
-
-The intent is:
-
-* tabs stay within viewport
-* tables fit available width
-* action column remains visible
-* long text truncates
-* scrolling happens only where necessary
-
-However, verify the implementation visually and structurally.
-
-The Applications table MUST NOT require horizontal scrolling just because the Actions column was added.
-
-Use controlled column widths.
+## C. UI page size
 
 Example:
 
-```css
-.table-fixed th:nth-child(1) { width: 28%; }
-.table-fixed th:nth-child(2) { width: 8%; }
-.table-fixed th:nth-child(3) { width: 12%; }
-.table-fixed th:nth-child(4) { width: 12%; }
-.table-fixed th:nth-child(5) { width: 12%; }
-.table-fixed th:nth-child(6) { width: 28%; }
+```text
+100 rows visible in the Jobs table
 ```
 
-Adjust based on the actual columns.
+This is also allowed.
 
-Do NOT blindly use these percentages.
-
-For Jobs:
+The bug to eliminate is:
 
 ```text
-Job
-Location
-Status
-Match
-Docs
-Updated
-Actions
+discovery batch size = 100
+AND
+system stops discovery after first batch
 ```
 
-For Applications:
-
-```text
-Job
-Score
-Status
-Docs
-Updated
-Actions
-```
-
-For Documents:
-
-```text
-Type
-Job
-Application
-File
-Actions
-```
-
-Actions must always remain visible.
+That must NOT happen.
 
 ---
 
-# 11. DARK MODE
+# 3. DATABASE IS THE COMPLETE JOB HISTORY
 
-The project already contains theme support:
+Every unique discovered job must be persisted.
 
-```jsx
-const { theme, toggle } = useTheme();
-```
-
-and:
-
-```jsx
-<ThemeToggle theme={theme} onToggle={toggle} />
-```
-
-Do not replace the theme architecture.
-
-Ensure delete buttons work in BOTH:
+If discovery finds:
 
 ```text
-light
-dark
+1,000 jobs
 ```
 
-states.
+the database should contain all 1,000 unique jobs.
 
-Use semantic classes:
+If later it finds:
 
-```css
-.danger-btn {
-  ...
-}
-
-.danger-btn:hover {
-  ...
-}
-
-.danger-btn:disabled {
-  ...
-}
+```text
+2,000 additional jobs
 ```
 
-Do not hard-code a white background that becomes unreadable in dark mode.
+the database should contain:
 
-Use existing CSS variables such as:
-
-```css
-var(--panel)
-var(--border)
+```text
+3,000 unique jobs
 ```
 
-and inspect the existing color system before adding variables.
+assuming no duplicates.
+
+Do NOT delete old jobs merely because they are not on the latest search page.
 
 ---
 
-# 12. API DESIGN CONSISTENCY
+# 4. DEDUPLICATION
 
-The API composition root currently registers routers:
+Before inserting a discovered job:
+
+calculate a stable fingerprint.
+
+Use the repository's existing fingerprint implementation if available.
+
+Do NOT create another incompatible fingerprint system.
+
+Preferred conceptual behavior:
 
 ```python
-for _router in (
-    status,
-    jobs,
-    applications_core,
-    applications_actions,
-    applications_documents,
-    documents,
-    events,
-    pipeline,
-    confirmations,
-):
-    app.include_router(_router.router)
+fingerprint = build_job_fingerprint(
+    company=normalized_company,
+    title=normalized_title,
+    location=normalized_location,
+    url=canonical_url,
+)
 ```
 
-Do not move business logic into `main.py`.
-
-The API currently uses router-level API-key authentication.
-
-Preserve:
+Then:
 
 ```python
-dependencies=[Depends(require_api_key)]
+existing = find_job_by_fingerprint(fingerprint)
+
+if existing:
+    update_existing_job_if_needed(existing)
+else:
+    create_job(...)
 ```
 
-on protected routers.
-
-Do not create an unprotected DELETE endpoint.
+Do NOT create duplicate rows when the same job is returned by multiple search pages or sources.
 
 ---
 
-# 13. HTTP METHODS
+# 5. DO NOT DEDUP BY TITLE ONLY
 
-Use proper REST semantics:
+This is WRONG:
+
+```python
+unique_key = job.title
+```
+
+These are different:
 
 ```text
-GET     read
-POST    create / command
-PATCH   partial update / action
-DELETE  delete resource
+Senior DevOps Engineer — Bosch Berlin
+Senior DevOps Engineer — Siemens Berlin
+Senior DevOps Engineer — BMW Munich
 ```
 
-Do NOT implement deletion as:
-
-```text
-POST /jobs/{id}/delete
-POST /applications/{id}/remove
-POST /documents/{id}/delete
-```
-
-unless an existing architectural constraint absolutely requires it.
-
-Preferred:
-
-```http
-DELETE /api/v1/jobs/{id}
-DELETE /api/v1/applications/{id}
-DELETE /api/v1/documents/{id}
-```
+Use the repository's existing canonical fingerprint strategy.
 
 ---
 
-# 14. ERROR CONTRACT
+# 6. CONTINUOUS DISCOVERY
 
-Use existing project's error handling.
+Discovery should iterate through available result pages/batches.
 
-Do not return arbitrary shapes from different DELETE endpoints.
+Conceptually:
 
-Preferred:
+```python
+page = 1
 
-```text
-404 → resource does not exist
-409 → resource cannot be deleted because of a business constraint
-422 → invalid identifier/input
-500/502 → infrastructure failure
-204 → successful deletion
+while True:
+    results = search_source(
+        query=query,
+        page=page,
+        page_size=BATCH_SIZE,
+    )
+
+    if not results:
+        break
+
+    process_results(results)
+
+    if len(results) < BATCH_SIZE:
+        break
+
+    page += 1
 ```
 
-If the project convention uses JSON success responses, use one consistent JSON response instead.
+However:
 
-Do not introduce inconsistent response semantics.
+DO NOT implement an uncontrolled infinite loop.
+
+Use configuration:
+
+```python
+DISCOVERY_BATCH_SIZE = 100
+DISCOVERY_MAX_PAGES_PER_RUN = 50
+DISCOVERY_MAX_RUNTIME_SECONDS = 300
+```
+
+Use whichever configuration system already exists in the repository.
+
+Do NOT hard-code these values inside business logic.
 
 ---
 
-# 15. DATABASE TRANSACTION SAFETY
+# 7. IMPORTANT: MAX PAGES IS NOT MAX JOBS
 
-For every deletion:
+This is acceptable:
 
-```python
-async with session.begin():
-    ...
+```text
+BATCH_SIZE = 100
+MAX_PAGES = 50
 ```
 
-or the repository's existing transaction convention.
+because it means:
 
-Do not call:
-
-```python
-await session.commit()
+```text
+up to 5,000 results per source/run
 ```
 
-in five different helper functions.
+It does NOT mean:
 
-The delete operation should have one clear transaction boundary.
-
-Example conceptual implementation:
-
-```python
-@router.delete("/{job_id}")
-async def delete_job(
-    job_id: UUID,
-    session: AsyncSession = Depends(get_db_session),
-):
-    job = await session.get(Job, job_id)
-
-    if job is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Job not found.",
-        )
-
-    # Determine dependent records from actual model relationships.
-    # Determine MinIO artifacts.
-    # Perform safe deletion.
-
-    await session.delete(job)
-    await session.commit()
-
-    return {
-        "id": str(job_id),
-        "deleted": True,
-    }
+```text
+100 total jobs
 ```
 
-This is only a structural example.
+If the source has fewer results, stop naturally.
 
-Do NOT copy blindly.
+If the source has more results than the safety limit, stop the CURRENT RUN and continue on the NEXT scheduled run.
 
-Adapt to the project's real SQLAlchemy model and transaction pattern.
+Do not lose the continuation position if the source supports pagination.
 
 ---
 
-# 16. MINIO CLEANUP
+# 8. PAGINATION CURSOR
 
-Before implementing Document or Job deletion, inspect all code referencing:
+If a source provides:
 
 ```text
-minio_key
-minio_bucket
-download_bytes
-upload
-delete
-artifact_relative_path
+next_page
+next_cursor
+offset
+continuation_token
 ```
 
-If MinIO has no safe delete helper, implement one in the existing MinIO abstraction rather than calling the MinIO SDK directly from random routers.
+use it.
 
-Preferred architecture:
+Prefer cursor-based pagination when the source supports it.
+
+Conceptually:
+
+```python
+cursor = None
+
+while True:
+    response = source.search(
+        query=query,
+        cursor=cursor,
+        limit=BATCH_SIZE,
+    )
+
+    process(response.jobs)
+
+    cursor = response.next_cursor
+
+    if not cursor:
+        break
+```
+
+Do NOT assume page numbers if the provider uses cursors.
+
+---
+
+# 9. DISCOVERY STATE
+
+If the existing system has a discovery/source state model, extend it instead of introducing another unrelated scheduler.
+
+Track:
 
 ```text
-router
-  ↓
-document/application service
-  ↓
-storage abstraction
-  ↓
-MinIO
+source
+query
+cursor/page
+last_run_at
+last_success_at
+jobs_found
+jobs_inserted
+jobs_updated
+```
+
+If appropriate, persist:
+
+```text
+discovery_runs
+```
+
+or use the existing:
+
+```text
+automation_runs
+pipeline_events
+```
+
+Do NOT create redundant tables if the existing infrastructure already provides equivalent functionality.
+
+---
+
+# 10. MATCH SCORE MUST BE PERSISTED
+
+The match score must NOT be calculated only in the frontend.
+
+It must be calculated by the backend/job matching pipeline and persisted.
+
+The existing:
+
+```text
+job_matches
+```
+
+table should be reused if it already stores:
+
+```text
+job_id
+profile_id
+match_score
+```
+
+Do NOT create a duplicate score table.
+
+---
+
+# 11. GLOBAL MATCH SCORE
+
+For the current user/profile:
+
+every unique job should have a match score where possible.
+
+Example:
+
+```text
+Job A → 98
+Job B → 91
+Job C → 73
+Job D → 97
+```
+
+The database query should return:
+
+```text
+A 98
+D 97
+B 91
+C 73
 ```
 
 NOT:
 
 ```text
-router
-  ↓
-raw MinIO SDK
+A 98
+B 91
+C 73
 ```
 
-This keeps infrastructure concerns separated.
+because they happened to be the first three discovered.
 
 ---
 
-# 17. IDEMPOTENCY / DELETE
+# 12. SORT IN DATABASE
 
-Deletes are destructive.
+Do NOT sort thousands of jobs in React.
 
-Do not blindly retry DELETE operations in a way that could hide state inconsistencies.
+Use SQL/database ordering.
 
-A second DELETE should normally return:
+Conceptually:
 
-```text
-404 Not Found
+```sql
+SELECT
+    j.*,
+    jm.match_score
+FROM jobs j
+LEFT JOIN job_matches jm
+    ON jm.job_id = j.id
+    AND jm.profile_id = :profile_id
+ORDER BY
+    jm.match_score DESC NULLS LAST,
+    j.created_at DESC,
+    j.id DESC
+LIMIT :page_size
+OFFSET :offset;
 ```
 
-or a documented idempotent success.
+Adapt this to the actual schema.
 
-Choose based on project convention.
+IMPORTANT:
 
-Do not make a failed MinIO cleanup look like a successful deletion.
+Use a deterministic secondary sort.
+
+Recommended:
+
+```text
+match_score DESC
+created_at DESC
+id DESC
+```
+
+This prevents unstable pagination.
 
 ---
 
-# 18. AUDIT / EVENTS
+# 13. NULL SCORE BEHAVIOR
 
-Inspect:
+Jobs without a calculated score should NOT appear above scored jobs.
 
-```text
-pipeline_events
-automation_runs
-dead_letter_events
+Use:
+
+```sql
+ORDER BY match_score DESC NULLS LAST
 ```
 
-before deleting application/job records.
-
-The architecture explicitly relies on events and asynchronous processing.
-
-Do NOT leave Redis workers processing a deleted application.
-
-Before deletion of an application that is:
+Conceptually:
 
 ```text
-RUNNING
-FILLING
-SUBMITTING
+98%
+97%
+96%
+...
+51%
+NULL
+NULL
 ```
 
-inspect the orchestrator/browser-agent behavior.
-
-You must prevent a worker from continuing to mutate an entity after it has been deleted.
-
-Possible safe strategy:
-
-```text
-if application is RUNNING/FILLING/SUBMITTING:
-    reject deletion with 409
-```
-
-OR implement a cancellation mechanism if one already exists.
-
-Do NOT invent a cancellation architecture unless necessary.
-
-For:
-
-```text
-CREATED
-FAILED
-BLOCKED
-REQUIRES_HUMAN
-SUBMITTED
-```
-
-deletion may be allowed if the project's business rules permit it.
-
-Again: derive the rule from the existing state machine.
+This is mandatory.
 
 ---
 
-# 19. SECURITY
+# 14. PROFILE-SPECIFIC SCORE
 
-Preserve all existing security rules.
+Do not assume a global score if the repository supports multiple profiles.
 
-Never log:
+The score must be associated with the correct profile.
 
-```text
-CV content
-application answers
-API keys
-browser cookies
-session tokens
-MinIO secrets
-```
-
-The repository explicitly treats:
+Use:
 
 ```text
-job descriptions
-application pages
-web pages
-uploaded documents
+job_matches.profile_id
 ```
 
-as untrusted input.
+or the equivalent existing relationship.
 
-Do not weaken this.
+The Jobs page must query the active/current profile.
 
-Deletion endpoints must use the same API-key protection as the existing CRUD endpoints.
+Do NOT mix scores between profiles.
 
 ---
 
-# 20. TESTS — MANDATORY
+# 15. NEW JOB FLOW
 
-Do not consider this task complete without tests.
-
-Add backend tests:
+When a new job is discovered:
 
 ```text
-test_delete_job_success
-test_delete_job_not_found
-test_delete_application_success
-test_delete_application_not_found
-test_delete_document_success
-test_delete_document_not_found
-test_delete_document_removes_storage_artifact
-test_delete_job_does_not_delete_unrelated_job
-test_delete_application_does_not_delete_job
+NEW JOB
+   ↓
+normalize
+   ↓
+deduplicate
+   ↓
+persist job
+   ↓
+calculate match score
+   ↓
+persist job_match
+   ↓
+available in ranking
 ```
 
-Also test relationship behavior:
-
-```text
-job → applications
-job → documents
-application → questions
-application → answers
-application → automation runs
-```
-
-Add frontend tests if the existing frontend test setup supports them.
-
-At minimum test:
-
-```text
-Delete button is rendered
-Delete confirmation appears
-Cancel does not delete
-Confirm calls DELETE
-Successful delete refreshes data
-Failed delete shows error
-Double click does not trigger two DELETE requests
-```
+Do not wait until the frontend opens the Jobs page to calculate the score.
 
 ---
 
-# 21. API SMOKE TEST
+# 16. EXISTING JOB FLOW
 
-Extend the existing API smoke test if appropriate.
-
-The project already has:
+When an existing job is discovered again:
 
 ```text
-tests/integration/test_api_smoke.py
+existing job
+    ↓
+update metadata if necessary
+    ↓
+do NOT create duplicate
+    ↓
+recalculate score only if required
 ```
 
-Use the existing conventions.
+Do not reset:
+
+```text
+application
+notes
+manual status
+documents
+```
+
+just because the job was rediscovered.
+
+---
+
+# 17. IMPORTANT: DO NOT DESTROY USER STATE
+
+Suppose:
+
+```text
+Job:
+Bosch Senior DevOps
+
+User status:
+INTERESTED
+
+Application:
+APPLIED
+
+Documents:
+CV v4
+Cover Letter v2
+```
+
+The same job is discovered again.
+
+The discovery process MUST NOT reset:
+
+```text
+INTERESTED
+APPLIED
+CV v4
+Cover Letter v2
+```
+
+Discovery is not allowed to overwrite human workflow state.
+
+---
+
+# 18. JOB UI — REMOVE GLOBAL 100 LIMIT
+
+The Jobs UI may show:
+
+```text
+100 rows
+```
+
+but this is page size only.
+
+The UI must display:
+
+```text
+Showing 1–100 of 8,742 jobs
+```
+
+and provide:
+
+```text
+Previous
+1
+2
+3
+...
+88
+Next
+```
+
+or equivalent pagination.
+
+Do NOT load all 8,742 rows into React.
+
+---
+
+# 19. PAGE SIZE SELECTOR
+
+Add:
+
+```text
+Rows:
+[50]
+[100]
+[250]
+[500]
+```
+
+Default:
+
+```text
+100
+```
+
+Do NOT provide "All" if it could cause a huge browser payload.
+
+If "All" already exists, remove it unless the dataset is safely bounded.
+
+---
+
+# 20. TOTAL COUNT
+
+The API must provide total count.
 
 Example:
 
-```python
-response = client.delete(
-    f"/api/v1/documents/{document_id}",
-    headers={"X-API-Key": api_key},
-)
-
-assert response.status_code in {200, 204}
-```
-
-Do not hard-code this exact status unless it matches your chosen API contract.
-
----
-
-# 22. FRONTEND API HELPER
-
-Use the existing:
-
-```jsx
-import { fetchJson } from "../../lib";
-```
-
-and:
-
-```jsx
-await fetchJson(`/api/v1/.../${id}`, {
-  method: "DELETE",
-});
-```
-
-Do NOT introduce axios if the frontend does not already use it.
-
-Do NOT introduce React Query just for this feature.
-
-Do NOT add Redux.
-
-Keep the architecture simple.
-
----
-
-# 23. REUSABLE DELETE HANDLER
-
-If three components need almost identical deletion logic, consider a small reusable helper.
-
-For example:
-
-```jsx
-export async function deleteResource(path) {
-  return fetchJson(path, {
-    method: "DELETE",
-  });
+```json
+{
+  "items": [...],
+  "page": 1,
+  "page_size": 100,
+  "total": 8742,
+  "total_pages": 88
 }
 ```
 
-But don't create abstractions for three lines of code unless they materially improve consistency.
+Use a separate efficient count query if necessary.
 
-The goal is:
+Do NOT calculate total from:
 
 ```text
-simple
-predictable
-maintainable
+items.length
 ```
 
-not abstraction for abstraction's sake.
+because that is only the current page.
 
 ---
 
-# 24. I18N
+# 21. DEFAULT JOB SORT
 
-Add strings to BOTH:
-
-```text
-services/frontend/i18n/en.json
-services/frontend/i18n/tr.json
-```
-
-Required concepts:
+The default Jobs view MUST be:
 
 ```text
-Delete
-Deleting...
-Cancel
-Actions
-Confirm deletion
-Delete job
-Delete application
-Delete document
-Deletion failed
-Deletion successful
-Cannot delete running application
+Match Score DESC
 ```
 
-Use:
+not:
 
-```jsx
-STRINGS.deleteBtn
-STRINGS.deleting
-STRINGS.confirmDeleteJob
-...
+```text
+created_at DESC
 ```
 
-Never:
+The user wants the best matching jobs first.
 
-```jsx
-<button>Delete</button>
+Secondary ordering:
+
+```text
+created_at DESC
+id DESC
 ```
-
-inside the component.
 
 ---
 
-# 25. ACCESSIBILITY
+# 22. SORT OPTIONS
 
-Delete buttons must have:
+Keep match score as default.
 
-```jsx
-type="button"
+Optionally support:
+
+```text
+Match score ↓
+Newest ↓
+Updated ↓
 ```
 
-and meaningful accessible names.
+Do not remove match-score sorting.
 
-If icon-only:
+When the user changes sorting, preserve pagination correctly.
 
-```jsx
-aria-label={STRINGS.deleteBtn}
-title={STRINGS.deleteBtn}
+---
+
+# 23. FILTERS
+
+Jobs page should support:
+
+```text
+All
+Interested
+Shortlisted
+Applied
+Archived
 ```
 
-Prefer text + icon rather than icon-only.
+only if the corresponding user lifecycle state exists.
+
+Do NOT confuse:
+
+```text
+discovery status
+```
+
+with:
+
+```text
+user status
+```
+
+If the current Job model uses an operational `status`, do not repurpose it blindly.
+
+---
+
+# 24. SEARCH
+
+Add server-side search where practical.
 
 Example:
 
-```jsx
-<button
-  type="button"
-  className="danger-btn"
-  aria-label={`${STRINGS.deleteBtn}: ${j.company} — ${j.title}`}
->
-  {STRINGS.deleteBtn}
-</button>
+```text
+Search:
+"DevOps AWS Kubernetes"
 ```
 
-Do not rely only on color to communicate danger.
+Search:
+
+```text
+title
+company
+location
+```
+
+Use database indexes/full-text search if already available.
+
+Do not download thousands of rows just to filter them in React.
 
 ---
 
-# 26. DO NOT BREAK APPLICATION ACTIONS
+# 25. APPLICATIONS MUST ALSO BE UNBOUNDED
 
-This is critical.
+The same principle applies to Applications.
 
-Existing application actions:
+Do NOT have:
 
 ```text
-Prepare
-Submit
-View progress
-Continue manually
-Retry
-View details
+first 50
 ```
 
-must continue to work exactly as before.
+as a hidden permanent limit.
 
-Delete is an additional destructive action.
+The database may contain:
 
-Do not replace the action system with a generic CRUD table.
+```text
+500
+5,000
+50,000
+```
 
-Example target:
+applications.
 
-```jsx
-<td className="application-actions actions-sticky">
+The UI should use pagination.
 
-  {/* existing state-specific actions */}
+Example:
 
-  ...
+```text
+Showing 1–100 of 527 applications
+```
 
-  {/* destructive action always separate */}
-  <button
-    type="button"
-    className="danger-btn"
-    onClick={() => onDelete(a)}
-    disabled={busyId === a.id}
-  >
-    {STRINGS.deleteBtn}
-  </button>
+with:
 
-</td>
+```text
+1 2 3 4 5 Next
 ```
 
 ---
 
-# 27. JOB DELETE AND DISCOVERY
+# 26. APPLICATION DEFAULT SORT
 
-Inspect how discovered jobs are identified:
-
-```text
-jobs(source, source_job_id)
-job_fingerprint
-```
-
-The data model explicitly defines uniqueness around:
+Applications should default to:
 
 ```text
-jobs(source, source_job_id)
+updated_at DESC
 ```
 
-and application fingerprinting.
+or the most useful existing application timestamp.
 
-Deleting a job must NOT modify the source adapter or fingerprinting logic.
+If the user has:
 
-After deletion, normal discovery may rediscover the same job.
+```text
+APPLIED
+INTERVIEW
+OFFER
+```
 
-That is acceptable unless the project already has a dismissed/ignored concept.
+recently updated applications should appear first.
 
-Do not change discovery semantics as part of this task.
+Do not sort applications by job discovery score unless there is a specific UI requirement.
 
 ---
 
-# 28. DOCUMENT DELETE AND APPLICATION LINKS
+# 27. DOCUMENTS SHOULD ALSO BE PAGINATED
 
-Documents may have:
+Apply the same principle to Documents if the current Documents API has a hard limit.
 
-```text
-job_id
-application_id
-type
-language
-version
-minio_key
-minio_bucket
-metadata_json
-```
-
-When deleting:
+Do not make a permanent:
 
 ```text
-Document
+LIMIT 100
 ```
 
-ensure that application references do not become broken.
-
-If another entity points to the document, inspect the FK.
-
-Do not blindly set:
-
-```python
-application.document_id = None
-```
-
-unless the schema actually contains such a relationship.
-
----
-
-# 29. ARCHITECTURAL CLEANUP TO PERFORM WHILE YOU ARE THERE
-
-While auditing the project, identify these smells:
-
-### A. Business logic in routers
-
-If routers contain too much business logic:
-
-```text
-query
-validation
-business rules
-storage
-event publishing
-```
-
-do not perform a huge rewrite now.
-
-Only extract logic if required by the deletion implementation.
-
-Prefer:
-
-```text
-router
-  ↓
-service
-  ↓
-repository / DB
-  ↓
-storage/event infrastructure
-```
-
-### B. Duplicate frontend fetch logic
-
-Do not create additional fetch patterns.
+without pagination.
 
 Use:
 
 ```text
-fetchJson
-usePolling
-existing refresh functions
-```
-
-### C. Hard-coded strings
-
-Follow existing i18n architecture.
-
-### D. CSS duplication
-
-Reuse:
-
-```text
-actions-sticky
-refresh-btn
-panel
-toolbar
-modal
-```
-
-where appropriate.
-
-Add only missing semantic styles.
-
----
-
-# 30. DEVOPS VALIDATION
-
-After implementation run:
-
-```bash
-docker compose config
-```
-
-Then:
-
-```bash
-make test
-```
-
-or the repository's documented equivalent.
-
-Also run:
-
-```bash
-pytest
-```
-
-if appropriate.
-
-Frontend:
-
-```bash
-cd services/frontend
-npm run build
-```
-
-Backend:
-
-```bash
-mypy shared/
-```
-
-if configured.
-
-Also run lint/format according to:
-
-```text
-pyproject.toml
-Makefile
-.pre-commit-config.yaml
-```
-
-Do not invent new tooling.
-
----
-
-# 31. DATABASE MIGRATIONS
-
-If deletion can be implemented without schema modification:
-
-DO NOT create a migration.
-
-If FK/cascade behavior genuinely requires schema modification:
-
-create a proper Alembic migration.
-
-Never manually modify production DB schema.
-
-Migration must be:
-
-```text
-forward
-reversible where practical
-tested
-documented
+Showing 1–100 of 2,341 documents
 ```
 
 ---
 
-# 32. IMPORTANT: DO NOT OVERENGINEER
+# 28. API DESIGN
 
-This is a single-user local-first career application.
+Do NOT create a new API architecture.
 
-Do NOT introduce:
+Extend the existing endpoints.
 
-```text
-Kafka
-RabbitMQ
-Kubernetes
-Redis-based CRUD state
-GraphQL
-Redux
-React Query
-micro-frontends
-event sourcing
-CQRS
-new database
-new ORM
+For Jobs, prefer:
+
+```http
+GET /api/v1/jobs?page=1&page_size=100&sort=match_score_desc
 ```
 
-unless the repository already requires it.
+Response:
 
-Existing architecture already has:
-
-```text
-PostgreSQL
-Redis Streams
-MinIO
-Docker Compose
-FastAPI
-Next.js
+```json
+{
+  "items": [],
+  "page": 1,
+  "page_size": 100,
+  "total": 8742,
+  "total_pages": 88
+}
 ```
 
-Use those.
+Adapt to the project's current API response conventions.
+
+If the API already uses:
+
+```text
+limit
+offset
+```
+
+you may preserve compatibility:
+
+```http
+GET /api/v1/jobs?limit=100&offset=0&sort=match_score_desc
+```
+
+but still return total metadata.
+
+Do NOT break existing API clients unnecessarily.
 
 ---
 
-# 33. ACCEPTANCE CRITERIA
+# 29. APPLICATION API
 
-The task is COMPLETE only if ALL are true:
+Equivalent:
 
-## Jobs
+```http
+GET /api/v1/applications?page=1&page_size=100
+```
 
-* [ ] Actions column exists.
-* [ ] Delete button exists.
-* [ ] Delete confirmation exists.
-* [ ] DELETE API exists.
-* [ ] API key required.
-* [ ] 404 handled.
-* [ ] Related records handled correctly.
-* [ ] MinIO artifacts handled correctly.
-* [ ] UI refreshes after delete.
-* [ ] Error shown if deletion fails.
+or the existing pagination convention.
 
-## Applications
+Response must contain:
 
-* [ ] Delete button exists.
-* [ ] Existing Prepare/Submit/View/Continue/Retry/Details actions still work.
-* [ ] DELETE API exists.
-* [ ] Related questions/answers/runs handled correctly.
-* [ ] Running application cannot be silently deleted.
-* [ ] UI refreshes correctly.
-
-## Documents
-
-* [ ] Delete button exists.
-* [ ] DELETE API exists.
-* [ ] MinIO object cleanup handled.
-* [ ] Versioning semantics preserved.
-* [ ] Application links remain consistent.
-* [ ] UI refreshes correctly.
-
-## UI
-
-* [ ] Works in light mode.
-* [ ] Works in dark mode.
-* [ ] No horizontal scrolling caused by action columns.
-* [ ] Action columns remain visible.
-* [ ] Long text truncates.
-* [ ] Buttons do not overflow table.
-* [ ] Responsive behavior preserved.
-* [ ] Turkish translations added.
-* [ ] English translations added.
-* [ ] Accessible buttons.
-
-## Backend
-
-* [ ] RESTful DELETE.
-* [ ] Transaction safe.
-* [ ] API-key protected.
-* [ ] No secret leakage.
-* [ ] No orphaned DB records.
-* [ ] No orphaned MinIO artifacts.
-* [ ] No invalid worker state.
-
-## Tests
-
-* [ ] Backend delete tests.
-* [ ] Not-found tests.
-* [ ] Relationship tests.
-* [ ] MinIO cleanup tests.
-* [ ] Frontend delete behavior tested if frontend test framework exists.
-* [ ] Full existing test suite passes.
-* [ ] Frontend build passes.
-* [ ] Docker Compose validation passes.
+```text
+items
+total
+page
+page_size
+total_pages
+```
 
 ---
 
-# 34. FINAL CODE REVIEW
+# 30. IMPORTANT: CHECK EVERY 100 LIMIT
 
-After implementation, do NOT immediately say "done".
-
-Perform a second independent review.
-
-Pretend you are reviewing another senior engineer's PR.
-
-Check:
+Search the complete repository for:
 
 ```text
-Architecture
-API
-Database
-Transactions
-MinIO
-Redis/events
-Concurrency
-Frontend
-Responsive UI
-Dark mode
-i18n
-Accessibility
-Security
-Tests
-Docker
-CI
+100
+limit=100
+LIMIT 100
+page_size=100
+DEFAULT_LIMIT
+MAX_LIMIT
+MAX_RESULTS
 ```
 
-Specifically search for:
+For every occurrence determine whether it is:
 
 ```text
-TODO
-FIXME
-pass
-except Exception
-console.log
-print(
-hard-coded "Delete"
-hard-coded "Deleting"
-duplicate DELETE
-unused imports
-unused props
-unused state
-dead CSS
-incorrect colSpan
-incorrect table widths
+GOOD:
+batch size
+API safety limit
+UI page size
+
+BAD:
+global discovery limit
+hidden database result truncation
+permanent result cap
 ```
 
-Fix issues you find.
+Fix all BAD cases.
+
+Do not blindly replace every `100`.
 
 ---
 
-# 35. DO NOT STOP AFTER FIRST ERROR
+# 31. DISCOVERY SHOULD CONTINUE BETWEEN RUNS
 
-If tests fail:
+If the source has more results than:
 
-1. Determine root cause.
-2. Fix the root cause.
-3. Re-run the relevant test.
-4. Re-run the full suite.
-5. Do not simply weaken/delete the failing test.
-
-Never do:
-
-```python
-@pytest.mark.skip
+```text
+MAX_PAGES_PER_RUN
 ```
 
-just to make CI green.
+do not discard them.
 
-Never remove assertions to hide a bug.
+Persist the continuation state where supported.
+
+Example:
+
+```text
+Run 1:
+pages 1–50
+
+Run 2:
+pages 51–100
+```
+
+If the source does not support persistent continuation, repeat the search safely and rely on deduplication.
+
+Do not assume the next run will always return identical ordering.
 
 ---
 
-# 36. REQUIRED FINAL RESPONSE FROM THE CODING AGENT
+# 32. SCHEDULER
 
-At the end report:
+Inspect the current scheduler/automation system.
 
-```text
-IMPLEMENTED
-----------
+If a scheduler already exists:
 
-Backend:
-- ...
-- ...
+reuse it.
 
-Frontend:
-- ...
-- ...
+Do NOT create another cron architecture.
 
-Database:
-- ...
-
-MinIO:
-- ...
-
-Tests:
-- ...
-
-Validation:
-- ...
-
-Files changed:
-- ...
-
-Commit:
-<commit hash>
-
-Potential remaining risks:
-- ...
-```
-
-Keep this factual.
-
-Do not claim something was tested if it was not actually tested.
-
----
-
-# 37. COMMIT
-
-When everything passes, create ONE focused commit:
+Desired behavior:
 
 ```text
-feat: add safe delete actions for jobs applications and documents
+Scheduled run
+    ↓
+discover jobs
+    ↓
+process batches
+    ↓
 ```
-
-Do not mix unrelated refactoring into the commit.
-
-If unrelated serious bugs are discovered, list them separately instead of silently expanding scope.
-
----
-
-# FINAL PRINCIPLE
-
-The goal is NOT merely:
-
-"put three red Delete buttons into the UI."
-
-The goal is:
-
-```text
-USER
- ↓
-DELETE BUTTON
- ↓
-CONFIRMATION
- ↓
-REST DELETE
- ↓
-API AUTH
- ↓
-BUSINESS VALIDATION
- ↓
-TRANSACTION
- ↓
-POSTGRES
- ↓
-MINIO CLEANUP
- ↓
-EVENT/WORKER SAFETY
- ↓
-CONSISTENT RESPONSE
- ↓
-FRONTEND REFRESH
- ↓
-USER SEES CORRECT STATE
-```
-
-Implement the complete lifecycle.
-
-Do not sacrifice data integrity for UI convenience.
-
-Do not sacrifice the existing application automation state machine for CRUD simplicity.
-
-Do not redesign the whole project.
-
-Make the smallest clean architectural change that produces production-quality behavior.

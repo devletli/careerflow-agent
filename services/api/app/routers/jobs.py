@@ -3,6 +3,7 @@ from typing import Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
+from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +11,12 @@ from app.deps import logger, minio_client
 from app.security import require_api_key
 from shared.db.models import Application, Document, Job, JobMatch
 from shared.db.session import get_db_session
+
+JOB_USER_STATUSES = frozenset({"NEW", "INTERESTED", "SHORTLISTED", "IGNORED", "ARCHIVED"})
+
+
+class JobUpdateRequest(BaseModel):
+    user_status: Optional[str] = None
 
 router = APIRouter(
     prefix="/api/v1/jobs",
@@ -23,6 +30,8 @@ async def list_jobs(
     limit: int = Query(default=100, le=100),
     offset: int = 0,
     q: Optional[str] = Query(default=None, description="Search company/title/URL"),
+    user_status: Optional[str] = Query(default=None, description="Filter by human board state"),
+    exclude_archived: bool = Query(default=False, description="Hide ARCHIVED jobs"),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[dict[str, Any]]:
     document_count = (
@@ -60,6 +69,10 @@ async def list_jobs(
         stmt = stmt.where(
             (Job.company.ilike(like)) | (Job.title.ilike(like)) | (Job.url.ilike(like))
         )
+    if user_status:
+        stmt = stmt.where(Job.user_status == user_status.upper())
+    if exclude_archived:
+        stmt = stmt.where((Job.user_status.is_(None)) | (Job.user_status != "ARCHIVED"))
     res = await session.execute(stmt)
     rows = res.all()
     return [
@@ -73,6 +86,7 @@ async def list_jobs(
             "location": j.location,
             "remote_status": j.remote_status,
             "status": j.status,
+            "user_status": j.user_status,
             "job_fingerprint": j.job_fingerprint,
             "created_at": j.created_at.isoformat() if j.created_at else None,
             "document_count": doc_count,
@@ -86,6 +100,34 @@ async def list_jobs(
 
 
 _RUNNING_APPLICATION_STATUSES = frozenset({"RUNNING", "FILLING", "SUBMITTING"})
+
+
+@router.patch("/{job_id}")
+async def update_job(
+    job_id: UUID,
+    request: JobUpdateRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Updates the human board state without touching pipeline `status`."""
+    job = await session.get(Job, job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Job not found.",
+        )
+    if "user_status" in request.model_fields_set:
+        if request.user_status is None:
+            job.user_status = None
+        else:
+            user_status = request.user_status.upper()
+            if user_status not in JOB_USER_STATUSES:
+                raise HTTPException(
+                    status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Unknown user_status: {request.user_status}.",
+                )
+            job.user_status = user_status
+        await session.flush()
+    return {"id": str(job.id), "user_status": job.user_status, "status": job.status}
 
 
 @router.delete("/{job_id}")

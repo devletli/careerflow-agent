@@ -24,12 +24,24 @@
   "GET"
  ],
  [
+  "/api/v1/applications/{application_id}/documents",
+  "POST"
+ ],
+ [
   "/api/v1/applications/{application_id}/documents/{doc_id}",
   "PATCH"
  ],
  [
+  "/api/v1/applications/{application_id}/documents/{document_id}",
+  "DELETE"
+ ],
+ [
   "/api/v1/applications/{application_id}/execute",
   "PATCH"
+ ],
+ [
+  "/api/v1/applications/{application_id}/interviews",
+  "POST"
  ],
  [
   "/api/v1/confirmations",
@@ -56,12 +68,28 @@
   "GET"
  ],
  [
+  "/api/v1/interviews",
+  "GET"
+ ],
+ [
+  "/api/v1/interviews/{interview_id}",
+  "DELETE"
+ ],
+ [
+  "/api/v1/interviews/{interview_id}",
+  "PATCH"
+ ],
+ [
   "/api/v1/jobs",
   "GET"
  ],
  [
   "/api/v1/jobs/{job_id}",
   "DELETE"
+ ],
+ [
+  "/api/v1/jobs/{job_id}",
+  "PATCH"
  ],
  [
   "/api/v1/pipeline/actions",

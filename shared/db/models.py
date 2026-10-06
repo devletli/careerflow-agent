@@ -52,6 +52,10 @@ class Job(Base):
     source_job_id: Mapped[str] = mapped_column(String(255), nullable=False)
     company: Mapped[str] = mapped_column(String(255), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Human/user state is separate from pipeline `status` (DISCOVERED...).
+    # Lets the user say INTERESTED/ARCHIVED while the agent still reports
+    # pipeline progress. NULL = no explicit user state yet.
+    user_status: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, default=None)
     url: Mapped[str] = mapped_column(Text, nullable=False)
     application_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -184,6 +188,14 @@ class Application(Base):
     failure_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     submission_metadata: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
     last_attempted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Human lifecycle is separate from automation `status` (CREATED/RUNNING/...).
+    # DRAFT, PREPARED, APPLIED, INTERVIEW, OFFER, REJECTED, WITHDRAWN.
+    lifecycle_status: Mapped[str] = mapped_column(String(32), nullable=False, default="DRAFT")
+    # MANUAL vs AUTOMATED: how this application was (or will be) submitted.
+    application_method: Mapped[str] = mapped_column(String(16), nullable=False, default="AUTOMATED")
+    applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_action: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    next_action_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
@@ -197,11 +209,107 @@ class Application(Base):
     answers: Mapped[list["ApplicationAnswer"]] = relationship(
         "ApplicationAnswer", back_populates="application", cascade="all, delete-orphan"
     )
+    status_history: Mapped[list["ApplicationStatusHistory"]] = relationship(
+        "ApplicationStatusHistory", back_populates="application", cascade="all, delete-orphan"
+    )
+    document_links: Mapped[list["ApplicationDocument"]] = relationship(
+        "ApplicationDocument", back_populates="application", cascade="all, delete-orphan"
+    )
+    interviews: Mapped[list["Interview"]] = relationship(
+        "Interview", back_populates="application", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         Index("ix_applications_job_id", "job_id"),
         Index("ix_applications_status_updated", "status", "updated_at"),
+        Index("ix_applications_lifecycle", "lifecycle_status"),
     )
+
+
+class ApplicationStatusHistory(Base):
+    """Append-only lifecycle audit: DRAFT -> APPLIED -> INTERVIEW -> ..."""
+
+    __tablename__ = "application_status_history"
+
+    id: Mapped[PyUUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    application_id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("applications.id", ondelete="CASCADE"), nullable=False
+    )
+    from_status: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    # MANUAL (user), AUTOMATED (worker), SYSTEM (seed/migration).
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="MANUAL")
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+    application: Mapped["Application"] = relationship("Application", back_populates="status_history")
+
+    __table_args__ = (Index("ix_app_status_history_app_created", "application_id", "created_at"),)
+
+
+class ApplicationDocument(Base):
+    """Authoritative per-application document snapshot.
+
+    One row = "application A applied with exactly this document version,
+    in this role, at this time". The same Document row may be linked to
+    many applications (unlike the legacy documents.application_id column,
+    which can only point at one). `documents.application_id` is kept for
+    backward compatibility; this table is the source of truth for reads.
+    Roles: CV, COVER_LETTER, OTHER.
+    """
+
+    __tablename__ = "application_documents"
+
+    id: Mapped[PyUUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    application_id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("applications.id", ondelete="CASCADE"), nullable=False
+    )
+    document_id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(32), nullable=False, default="CV")
+    attached_by: Mapped[str] = mapped_column(String(16), nullable=False, default="MANUAL")
+    attached_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+    application: Mapped["Application"] = relationship("Application", back_populates="document_links")
+    document: Mapped["Document"] = relationship("Document")
+
+    __table_args__ = (
+        UniqueConstraint("application_id", "document_id", name="uq_app_documents_app_doc"),
+        Index("ix_app_documents_app", "application_id"),
+        Index("ix_app_documents_doc", "document_id"),
+    )
+
+
+class Interview(Base):
+    """One interview round in the human hiring process.
+
+    Result: PENDING (upcoming / awaiting outcome), PASSED, FAILED, CANCELLED.
+    Mode / round / interviewer are free text (e.g. "Technical Interview",
+    "Teams", "Max Mustermann") so no enum migration is ever needed.
+    """
+
+    __tablename__ = "interviews"
+
+    id: Mapped[PyUUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    application_id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("applications.id", ondelete="CASCADE"), nullable=False
+    )
+    scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    round: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    mode: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    interviewer: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    location: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    result: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+    application: Mapped["Application"] = relationship("Application", back_populates="interviews")
+
+    __table_args__ = (Index("ix_interviews_app_scheduled", "application_id", "scheduled_at"),)
 
 
 class ApplicationQuestion(Base):

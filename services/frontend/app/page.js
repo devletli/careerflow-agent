@@ -33,6 +33,8 @@ export default function Home() {
   const [actionMessage, setActionMessage] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [archivingId, setArchivingId] = useState(null);
+  const [hideArchived, setHideArchived] = usePersistentState("jobs.hideArchived", false);
   const { health } = useHealth();
   const { theme, toggle } = useTheme();
 
@@ -74,7 +76,9 @@ export default function Home() {
   const appsStatusParam = appsStatus ? `&status=${encodeURIComponent(appsStatus)}` : "";
 
   const statusQ = usePolling("/api/v1/status");
-  const jobsQ = usePolling(`/api/v1/jobs?limit=100${qParam(dJobsQuery)}`);
+  const jobsQ = usePolling(
+    `/api/v1/jobs?limit=100${qParam(dJobsQuery)}${hideArchived ? "&exclude_archived=true" : ""}`
+  );
   const applicationsQ = usePolling(
     `/api/v1/applications?limit=100${qParam(dAppsQuery)}${appsStatusParam}${appsScoreParam}`
   );
@@ -224,6 +228,23 @@ export default function Home() {
     }
   }, [deleteTarget, deletingId, jobsQ, applicationsQ, documentsQ, eventsQ]);
 
+  const archiveJob = useCallback(async (job, userStatus) => {
+    if (!job?.id || archivingId) return;
+    setArchivingId(job.id);
+    try {
+      await fetchJson(`/api/v1/jobs/${job.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_status: userStatus }),
+      });
+      jobsQ.refresh();
+    } catch (error) {
+      setActionMessage(`${STRINGS.archiveFailed} ${error.message}`);
+    } finally {
+      setArchivingId(null);
+    }
+  }, [archivingId, jobsQ]);
+
   const deleteDialog = deleteTarget ? {
     job: { title: STRINGS.confirmDeleteJob, message: STRINGS.deleteJobDescription },
     application: { title: STRINGS.confirmDeleteApplication, message: STRINGS.deleteApplicationDescription },
@@ -255,7 +276,7 @@ export default function Home() {
           actionMessage={actionMessage}
         />
       )}
-      {tab === "Jobs" && <JobsTab jobs={jobsQ.data} query={jobsQuery} onQueryChange={setJobsQuery} error={jobsQ.error} loading={jobsQ.loading} refresh={jobsQ.refresh} onDelete={(j) => requestDelete("job", j)} deletingId={deletingId} />}
+      {tab === "Jobs" && <JobsTab jobs={jobsQ.data} query={jobsQuery} onQueryChange={setJobsQuery} error={jobsQ.error} loading={jobsQ.loading} refresh={jobsQ.refresh} onDelete={(j) => requestDelete("job", j)} deletingId={deletingId} onArchive={archiveJob} archivingId={archivingId} hideArchived={hideArchived} onHideArchivedChange={setHideArchived} />}
       {tab === "Applications" && (
         <ApplicationsTab
           applications={applicationsQ.data}

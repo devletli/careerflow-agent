@@ -2,6 +2,8 @@
 __pycache__/
 *.py[cod]
 .venv/
+venv/
+env/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -21,6 +23,9 @@ build/
 *.sqlite
 *.sqlite3
 *.db
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
 
 # Secrets and local environment configuration
 .env
@@ -80,6 +85,9 @@ chatgpt.txt
 node_modules/
 .next/
 out/
+next-env.d.ts
+*.tsbuildinfo
+.turbo/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

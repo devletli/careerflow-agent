@@ -82,7 +82,14 @@ export default function ApplicationsTab({ applications, query, onQueryChange, st
               <td data-label={STRINGS.colScore} className="cell-main">
                 <div className="cell-title">{a.match_score ?? "-"}</div>
               </td>
-              <td data-label={STRINGS.colStatus}><StatusPill status={a.status} /></td>
+              <td data-label={STRINGS.colStatus}>
+                <StatusPill status={a.status} />
+                {a.lifecycle_status && (
+                  <div className="cell-sub" title={a.next_action || ""}>
+                    {a.lifecycle_status}{a.next_action_due_at ? ` • ${a.next_action_due_at.slice(0, 10)}` : ""}
+                  </div>
+                )}
+              </td>
               <td data-label={STRINGS.colDocs}><DocBadges docs={a.documents} /></td>
               <td data-label={STRINGS.colUpdated} className="cell-wrap">{formatDate(a.created_at)}</td>
               <td data-label={STRINGS.colActions} className="application-actions actions-sticky">

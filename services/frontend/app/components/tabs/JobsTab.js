@@ -3,13 +3,21 @@
 import { formatDate, StatusPill, STRINGS } from "../../lib";
 import { SearchBar, Toolbar } from "../controls";
 
-export default function JobsTab({ jobs, query, onQueryChange, error, loading, refresh, onDelete, deletingId }) {
-  // Filtreleme backend'de (?q=); burada yalnızca backend yanıtı render edilir.
-  const rows = jobs || [];
+export default function JobsTab({ jobs, query, onQueryChange, error, loading, refresh, onDelete, deletingId, onArchive, archivingId, hideArchived, onHideArchivedChange }) {
+  // Backend already filters ARCHIVED when ?exclude_archived=true; keep a
+  // defensive client filter for cached/polling overlap.
+  const all = jobs || [];
+  const rows = hideArchived ? all.filter((j) => j.user_status !== "ARCHIVED") : all;
   return (
     <div className="panel">
       <Toolbar label={STRINGS.jobsToolbar} onRefresh={refresh} count={rows?.length} />
-      <SearchBar value={query} onChange={onQueryChange} />
+      <div className="toolbar">
+        <SearchBar value={query} onChange={onQueryChange} />
+        <label className="muted" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <input type="checkbox" checked={Boolean(hideArchived)} onChange={(e) => onHideArchivedChange && onHideArchivedChange(e.target.checked)} />
+          {STRINGS.hideArchived}
+        </label>
+      </div>
       {error && <div className="error-banner">{error}</div>}
       <table className="responsive table-fixed jobs-table">
         <thead>
@@ -34,7 +42,10 @@ export default function JobsTab({ jobs, query, onQueryChange, error, loading, re
                 <div className="cell-title" title={j.location || "-"}>{j.location || "-"}</div>
                 <div className="cell-sub">{j.remote_status || ""}</div>
               </td>
-              <td data-label={STRINGS.colStatus}><StatusPill status={j.status} /></td>
+              <td data-label={STRINGS.colStatus}>
+                <StatusPill status={j.status} />
+                {j.user_status && <div className="cell-sub">{j.user_status}</div>}
+              </td>
               <td data-label={STRINGS.colMatch} className="cell-main">
                 <div className="cell-title">{j.match_score ?? "-"}</div>
                 <div className="cell-sub">{j.qualification_status || ""}</div>
@@ -45,6 +56,27 @@ export default function JobsTab({ jobs, query, onQueryChange, error, loading, re
                 <a className="link" href={j.url} target="_blank" rel="noreferrer">
                   {STRINGS.viewLink}
                 </a>
+                {j.user_status === "ARCHIVED" ? (
+                  <button
+                    type="button"
+                    className="refresh-btn"
+                    aria-label={`${STRINGS.unarchive}: ${j.company} — ${j.title}`}
+                    onClick={() => onArchive && onArchive(j, null)}
+                    disabled={archivingId === j.id}
+                  >
+                    {STRINGS.unarchive}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="refresh-btn"
+                    aria-label={`${STRINGS.archive}: ${j.company} — ${j.title}`}
+                    onClick={() => onArchive && onArchive(j, "ARCHIVED")}
+                    disabled={archivingId === j.id}
+                  >
+                    {STRINGS.archive}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="danger-btn"

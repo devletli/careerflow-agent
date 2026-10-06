@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import logger, minio_client
 from app.security import require_api_key
-from shared.db.models import Application, Document, Job
+from shared.db.models import Application, ApplicationDocument, Document, Job
 from shared.db.session import get_db_session
 
 router = APIRouter(
@@ -48,7 +48,15 @@ async def list_documents(
     if type:
         stmt = stmt.where(Document.type == type)
     if application_id is not None:
-        stmt = stmt.where(Document.application_id == application_id)
+        # Source of truth is application_documents (a doc may be shared
+        # across apps); legacy documents.application_id holds only the last
+        # link, so match either.
+        linked_ids = select(ApplicationDocument.document_id).where(
+            ApplicationDocument.application_id == application_id
+        )
+        stmt = stmt.where(
+            (Document.application_id == application_id) | (Document.id.in_(linked_ids))
+        )
     res = await session.execute(stmt)
     rows = res.all()
 
@@ -212,6 +220,15 @@ async def delete_document(
             detail="Document not found.",
         )
     bucket, key = document.minio_bucket, document.minio_key
+    # Remove snapshot links first so exact-version history stays consistent
+    # even on DBs without FK enforcement (SQLite without pragma).
+    links = (
+        await session.execute(
+            select(ApplicationDocument).where(ApplicationDocument.document_id == document.id)
+        )
+    ).scalars().all()
+    for link in links:
+        await session.delete(link)
     await session.delete(document)
     await session.flush()
     others = (
