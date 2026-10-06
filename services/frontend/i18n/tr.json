@@ -159,5 +159,19 @@
   "pageIndicator": "Sayfa {page}",
   "explainBtn": "Açıkla",
   "explaining": "Açıklama üretiliyor…",
-  "explainFailed": "Açıklama üretilemedi."
+  "explainFailed": "Açıklama üretilemedi.",
+  "status": {
+    "created": "Oluşturuldu",
+    "discovered": "Bulundu",
+    "running": "Çalışıyor",
+    "filling": "Dolduruluyor",
+    "filled": "Dolduruldu",
+    "submitting": "Gönderiliyor",
+    "requires_human": "Seni bekliyor",
+    "ready": "Gönderime hazır",
+    "failed": "Başarısız",
+    "blocked": "Engellendi",
+    "submitted": "Gönderildi",
+    "unknown": "Bilinmiyor"
+  }
 }

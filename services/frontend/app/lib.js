@@ -20,7 +20,18 @@ export function formatDate(iso) {
 
 export function StatusPill({ status }) {
   if (!status) return <span className="status-pill status-UNKNOWN">UNKNOWN</span>;
-  return <span className={`status-pill status-${status}`}>{status}</span>;
+  // Yerelleşmiş etiket (statusUx); bilinmeyen durum ham metinle, nötr çöker.
+  let label = status;
+  try {
+    label = statusLabel(status, STRINGS);
+  } catch {
+    label = status;
+  }
+  return (
+    <span className={`status-pill status-${status}`} title={status}>
+      {label}
+    </span>
+  );
 }
 
 // Dashboard strings (T7 i18n). Default locale comes from the
@@ -29,6 +40,7 @@ export function StatusPill({ status }) {
 // never as hardcoded literals in page components.
 import enStrings from "../i18n/en.json";
 import trStrings from "../i18n/tr.json";
+import { statusLabel } from "./lib/statusUx.js";
 
 const _locale = (typeof process !== "undefined" && process.env.NEXT_PUBLIC_LOCALE) || "en";
 

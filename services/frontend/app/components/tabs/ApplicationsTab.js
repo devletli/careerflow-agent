@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { formatDate, StatusPill, STRINGS } from "../../lib";
+import { statusUxFor } from "../../lib/statusUx.js";
 import { distinctStatuses, SearchBar, Toolbar } from "../controls";
 import { DocBadges, UrlAddDialog } from "../shared";
 
@@ -12,20 +13,24 @@ export default function ApplicationsTab({ applications, total, query, onQueryCha
   const [notice, setNotice] = useState("");
   // Available actions per application status (P0). Legacy backend
   // statuses are normalized so no row ever shows a wrong action set.
+  // STATUS_UX.next hangi aksiyonun birincil (primary-btn) olacağını söyler.
   function getAvailableActions(application) {
     switch (application.status) {
       case "CREATED":
+      case "DISCOVERED":
         return ["prepare"];
       case "READY_TO_SUBMIT":
       case "READY_TO_APPLY":
-        return ["submit"];
+      case "FILLED":
+        return ["review", "submit"];
       case "RUNNING":
       case "FILLING":
       case "SUBMITTING":
         return ["view"];
       case "REQUIRES_HUMAN":
+        return ["continue", "open"];
       case "BLOCKED":
-        return ["continue"];
+        return ["open", "continue"];
       case "FAILED":
         return ["retry"];
       case "SUBMITTED":
@@ -69,14 +74,16 @@ export default function ApplicationsTab({ applications, total, query, onQueryCha
         <tbody>
           {rows.map((a) => {
             const actions = getAvailableActions(a);
+            const primary = statusUxFor(a.status).next;
+            const reason = a.blocked_reason || a.failure_reason || "";
             return (
             <tr key={a.id}>
               <td data-label={STRINGS.colJob} className="cell-main">
                 <div className="cell-title" title={`${a.company} — ${a.title}`}>
                   <a className="link" href={`/applications/${a.id}`}>{a.company} — {a.title}</a>
                 </div>
-                <div className="cell-sub" title={a.blocked_reason || a.failure_reason || ""}>
-                  {a.blocked_reason || a.failure_reason || `${a.automation_mode} • attempts: ${a.attempts}`}
+                <div className="cell-sub" title={reason || ""}>
+                  {reason || `${a.automation_mode} • attempts: ${a.attempts}`}
                 </div>
               </td>
               <td data-label={STRINGS.colScore} className="cell-main">
@@ -84,6 +91,7 @@ export default function ApplicationsTab({ applications, total, query, onQueryCha
               </td>
               <td data-label={STRINGS.colStatus}>
                 <StatusPill status={a.status} />
+                {reason && <div className="cell-sub" title={reason}>{reason.slice(0, 80)}</div>}
                 {a.lifecycle_status && (
                   <div className="cell-sub" title={a.next_action || ""}>
                     {a.lifecycle_status}{a.next_action_due_at ? ` • ${a.next_action_due_at.slice(0, 10)}` : ""}
@@ -94,12 +102,17 @@ export default function ApplicationsTab({ applications, total, query, onQueryCha
               <td data-label={STRINGS.colUpdated} className="cell-wrap">{formatDate(a.created_at)}</td>
               <td data-label={STRINGS.colActions} className="application-actions actions-sticky">
                   {actions.includes("prepare") && (
-                    <button className="refresh-btn" onClick={() => onExecute(a, "prepare")} disabled={busyId === a.id}>
+                    <button className={`refresh-btn${primary === "prepare" ? " primary-btn" : ""}`} onClick={() => onExecute(a, "prepare")} disabled={busyId === a.id}>
                       {STRINGS.prepareBtn}
                     </button>
                   )}
+                  {actions.includes("review") && (
+                    <a className={`link${primary === "review" ? " primary-btn" : ""}`} href={`/applications/${a.id}`}>
+                      {STRINGS.goToDetail}
+                    </a>
+                  )}
                   {actions.includes("submit") && (
-                    <button className="refresh-btn primary-btn" onClick={() => onExecute(a, "submit")} disabled={busyId === a.id}>
+                    <button className={`refresh-btn${primary === "submit" ? " primary-btn" : ""}`} onClick={() => onExecute(a, "submit")} disabled={busyId === a.id}>
                       {STRINGS.submitBtn}
                     </button>
                   )}
@@ -110,13 +123,18 @@ export default function ApplicationsTab({ applications, total, query, onQueryCha
                       {STRINGS.viewProgress}
                     </a>
                   )}
+                  {actions.includes("open") && a.application_url && (
+                    <a className={`link${primary === "open" ? " primary-btn" : ""}`} href={a.application_url} target="_blank" rel="noreferrer">
+                      {STRINGS.openInBrowser}
+                    </a>
+                  )}
                   {actions.includes("continue") && (
-                    <button className="refresh-btn" onClick={() => onExecute(a, "continue")} disabled={busyId === a.id}>
+                    <button className={`refresh-btn${primary === "continue" ? " primary-btn" : ""}`} onClick={() => onExecute(a, "continue")} disabled={busyId === a.id}>
                       {STRINGS.continueManual}
                     </button>
                   )}
                   {actions.includes("retry") && (
-                    <button className="refresh-btn" onClick={() => onExecute(a, "retry")} disabled={busyId === a.id}>
+                    <button className={`refresh-btn${primary === "retry" ? " primary-btn" : ""}`} onClick={() => onExecute(a, "retry")} disabled={busyId === a.id}>
                       {STRINGS.retryBtn}
                     </button>
                   )}

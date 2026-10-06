@@ -159,5 +159,19 @@
   "pageIndicator": "Page {page}",
   "explainBtn": "Explain",
   "explaining": "Generating explanation…",
-  "explainFailed": "Explanation failed."
+  "explainFailed": "Explanation failed.",
+  "status": {
+    "created": "Created",
+    "discovered": "Discovered",
+    "running": "Running",
+    "filling": "Filling",
+    "filled": "Filled",
+    "submitting": "Submitting",
+    "requires_human": "Needs you",
+    "ready": "Ready to submit",
+    "failed": "Failed",
+    "blocked": "Blocked",
+    "submitted": "Submitted",
+    "unknown": "Unknown"
+  }
 }
