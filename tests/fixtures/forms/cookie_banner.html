@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture: cookie banner</title></head>
+<body>
+<h1>Posting with cookie banner</h1>
+<div id="banner" role="dialog" aria-label="Cookies">
+  <button id="rej" type="button" onclick="window.__rejected=true">Reject optional</button>
+  <button id="acc" type="button" onclick="window.__accepted=true">Accept all</button>
+</div>
+<script>window.__rejected = false; window.__accepted = false;</script>
+</body>
+</html>

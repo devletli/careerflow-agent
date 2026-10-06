@@ -5,11 +5,12 @@ skipped_unverified and is never guessed. Protection controls are never
 touched. No submit capability exists on adapters by design.
 """
 import logging
+import re
 from pathlib import Path
 
 from playwright.async_api import Page
 
-from browser.site_adapters.base import FieldPlan, FillResult
+from browser.site_adapters.base import FieldPlan, FieldSpec, FillResult
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,18 @@ MFA_TEXT = [
     "verify your identity",
 ]
 
+# pre_fill: yalnizca bunlar tiklanir; ACCEPT_ALL_RX eslesen hicbir sey tiklanmaz.
+REJECT_RX = re.compile(
+    r"reject|decline|only necessary|necessary only|essential only|"
+    r"strictly necessary|nur notwendige|alle ablehnen|ablehnen|"
+    r"yaln.zca gerekli|sadece gerekli|reddet|zorunlu|sadece zorunlu",
+    re.I,
+)
+
+ACCEPT_ALL_RX = re.compile(
+    r"accept all|alle akzeptieren|t.m.n. kabul et", re.I
+)
+
 
 class GenericAdapter:
     name = "generic"
@@ -77,6 +90,39 @@ class GenericAdapter:
     def submit_locator(self, page: Page) -> str | None:
         """Siteye ozel secici yok; Engine varsayilan SUBMIT_SELECTORS kullanilir."""
         return None
+
+    async def form_root(self, page: Page) -> Page:
+        """Varsayilan: ana sayfa (gomulu form yok)."""
+        return page
+
+    def field_specs(self) -> dict[str, FieldSpec]:
+        """Varsayilan: ATS'ye ozel cozum yok."""
+        return {}
+
+    async def pre_fill(self, page: Page) -> None:
+        """Yalnizca reject/necessary-only cerez dugmesini tiklar.
+
+        Accept-all eslesen dugmeler atlanir; hicbiri bulunamazsa dokunulmaz.
+        """
+        try:
+            buttons = await page.get_by_role("button").all()
+        except Exception:
+            return
+        for btn in buttons:
+            try:
+                name = (await btn.inner_text()).strip()
+            except Exception:
+                continue
+            if not name or ACCEPT_ALL_RX.search(name):
+                continue
+            if not REJECT_RX.search(name):
+                continue
+            try:
+                if await btn.is_visible() and await btn.is_enabled():
+                    await btn.click()
+                    return
+            except Exception:
+                continue
 
     def _match_key(self, plan: list[FieldPlan], key: str) -> FieldPlan | None:
         for field in plan:

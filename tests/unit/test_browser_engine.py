@@ -63,7 +63,7 @@ def _plan():
 
 def test_registry_prefers_specific_adapter_with_generic_fallback():
     assert resolve("https://myorg.workable.com/j/123").name == "workable"
-    assert resolve("https://jobs.ashbyhq.com/org/123").name == "generic"
+    assert resolve("https://jobs.ashbyhq.com/org/123").name == "ashby"
     assert resolve("https://example.com/apply").name == "generic"
 
 

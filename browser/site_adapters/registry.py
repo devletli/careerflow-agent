@@ -1,4 +1,5 @@
 """Adapter resolution: first matching adapter wins, generic is the fallback."""
+from browser.site_adapters.ashby import AshbyAdapter
 from browser.site_adapters.base import SiteAdapter
 from browser.site_adapters.generic import GenericAdapter
 from browser.site_adapters.greenhouse import GreenhouseAdapter
@@ -22,4 +23,5 @@ def resolve(url: str) -> SiteAdapter:
 register(WorkableAdapter())
 register(GreenhouseAdapter())
 register(LeverAdapter())
+register(AshbyAdapter())
 register(GenericAdapter())

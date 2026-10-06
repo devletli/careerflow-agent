@@ -27,6 +27,14 @@ class FieldPlan:
     kind: str  # "text" | "select" | "file" | "checkbox"
 
 
+@dataclass(frozen=True)
+class FieldSpec:
+    """ATS'ye ozel alan cozumu: once selectors, sonra etiket esanlamlilari."""
+    selectors: tuple[str, ...] = ()
+    labels: tuple[str, ...] = ()
+    kind: str = "text"  # text | select | combobox | file | checkbox
+
+
 @dataclass
 class FillResult:
     filled: list[str] = field(default_factory=list)
@@ -52,6 +60,18 @@ class SiteAdapter(Protocol):
         Salt locator dondurur, ASLA tiklamaz. Tiklama yalnizca Engine'de,
         confirmed=True + mod izniyle yapilir.
         """
+        ...
+    async def form_root(self, page: Page):
+        """Form kapsami: iframe'li gomulu formda Frame/FrameLocator,
+        aksi halde page. Secici aramalar bu kokten yapilir. Async cunku
+        varlik kontrolu (count) await gerektirir."""
+        ...
+    def field_specs(self) -> dict[str, FieldSpec]:
+        """Standart anahtar -> ATS'ye ozel cozum. Bos dict = generic."""
+        ...
+    async def pre_fill(self, page: Page) -> None:
+        """Doldurma oncesi: yalnizca reject/necessary-only cerez dugmesi
+        tiklanabilir. Accept-all ASLA tiklanmaz."""
         ...
     # submit() is intentionally ABSENT: submit lives only in the Engine,
     # behind an explicit confirmation flag.
