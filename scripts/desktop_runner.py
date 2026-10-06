@@ -183,6 +183,18 @@ def _summary_report(app_url: str, summary) -> dict:
     _record_step(report, "resolve_target",
                  ok=target_kind in ("form", "stay", "moved"),
                  reason=str(target_reason) if target_reason else None)
+    detailed = getattr(summary, "fields", None) or []
+    for entry in detailed:
+        if isinstance(entry, dict) and entry.get("key"):
+            _record_field(report, str(entry.get("key", "")),
+                          str(entry.get("outcome", "unknown")),
+                          str(entry.get("reason", "")) or None)
+    if not detailed:
+        for key in getattr(summary, "filled", []) or []:
+            _record_field(report, str(key), "filled")
+        for key in getattr(summary, "unverified", []) or []:
+            _record_field(report, str(key), "unverified",
+                          reason="requires_human")
     _record_step(report, "run_assisted", ok=timed_out is None,
                  reason=str(timed_out) if timed_out else None)
     for key in getattr(summary, "filled", []) or []:

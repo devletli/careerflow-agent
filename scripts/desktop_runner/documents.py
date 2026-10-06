@@ -102,7 +102,9 @@ async def attach_files(page: Page, prepared: dict[str, Path]) -> list[str]:
     for index in range(await page.locator("input[type='file']").count()):
         field = page.locator("input[type='file']").nth(index)
         try:
-            if not await field.is_visible() or not await field.is_enabled():
+            # Gizli input'lar da baglanir (set_input_files gorunurluk
+            # istemez; gercek Lever/Greenhouse girdileri gizlidir).
+            if not await field.is_enabled():
                 continue
             field_key = normalized(
                 " ".join(

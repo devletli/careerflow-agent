@@ -25,9 +25,6 @@ from desktop_runner.fill import (
     set_checkable,
     set_select,
 )
-from desktop_runner.fill import (
-    fill_field as type_field,
-)
 from desktop_runner.handoff import (
     active_page,
     ensure_panel_script,
@@ -41,6 +38,15 @@ from desktop_runner.navigation import (
     dismiss_cookie_banner,
     is_submit_label,
     wait_for_content,
+)
+from desktop_runner.resolver import (
+    CREDENTIAL_KEYS,
+    absence_reason,
+    diagnose,
+    fill_and_verify,
+    fill_combobox,
+    is_sensitive,
+    resolve,
 )
 from desktop_runner.target import resolve_target
 
@@ -75,18 +81,39 @@ class StepResult:
     filled: list[str] = field(default_factory=list)
     unverified_required: list[str] = field(default_factory=list)
     unverified_locators: list[Locator] = field(default_factory=list)
+    field_records: list[dict] = field(default_factory=list)
 
 
 @dataclass
 class AssistSummary:
     filled: list[str] = field(default_factory=list)
     unverified: list[str] = field(default_factory=list)
+    fields: list[dict] = field(default_factory=list)
     handoffs: int = 0
     timed_out: str | None = None
     ats: str = "generic"
     target_kind: str = "form"  # form | stay | moved | email_only | no_form
     target_reason: str | None = None  # EMAIL_ONLY | NO_ONLINE_FORM | None
     target_email: str | None = None  # panele gosterilir, rapora yazilmaz
+
+
+def _adapter_hooks(app_url: str):
+    """Registry uzerinden adapter (ATS `if` yok); yoksa bos kancalar."""
+    try:
+        from browser.site_adapters.registry import resolve as resolve_adapter
+
+        adapter = resolve_adapter(app_url or "")
+        return adapter.field_specs(), adapter
+    except Exception:
+        return {}, None
+
+
+def _record(result: StepResult, key: str, outcome: str,
+            reason: str | None = None) -> None:
+    entry: dict = {"key": str(key), "outcome": outcome}
+    if reason:
+        entry["reason"] = reason
+    result.field_records.append(entry)
 
 
 async def _fresh_page(ctx: BrowserContext) -> Page:
@@ -150,9 +177,88 @@ def _matches_checkable(field_value_attr: str | None, verified: object) -> bool:
     return bool(attr) and (text == attr or text in attr or attr in text)
 
 
-async def inspect_and_fill(page: Page, answers: dict, delay_ms: int) -> StepResult:
+async def _fill_verified_keys(page: Page, root, specs: dict, answers: dict,
+                              delay_ms: int, result: StepResult) -> None:
+    """Anahtar-gudumlu doldurma: coz -> (hassasiyet filtresi) -> yaz-dogrula.
+
+    Cozulemeyen dogrulanmis deger tahminle yazilmaz (ambiguous kaydi duser,
+    not_found sessiz gecilir). Hassas alan sarilanir, insanin kalir.
+    """
+    for answer_key, answer_value in (answers or {}).items():
+        if answer_value is None or not str(answer_value).strip():
+            continue
+        value = str(answer_value)
+        for candidate_key in (str(answer_key), normalized(str(answer_key))):
+            norm = normalized(str(answer_key))
+            if norm in CREDENTIAL_KEYS or "password" in norm:
+                break
+            spec = specs.get(candidate_key)
+            kind = (spec.kind if spec is not None else "text")
+            if kind in ("select", "checkbox", "file"):
+                continue
+            try:
+                loc = await resolve(root, candidate_key, spec)
+            except Exception:
+                continue
+            if loc is None:
+                try:
+                    if await absence_reason(root, candidate_key, spec) == "ambiguous":
+                        _record(result, candidate_key, "ambiguous",
+                                "multiple_candidates")
+                except Exception:
+                    pass
+                continue
+            try:
+                if await is_sensitive(loc):
+                    await mark_unverified(page, [loc])
+                    _record(result, candidate_key, "skipped_sensitive",
+                            "sensitive_never_fill")
+                    result.unverified_required.append(candidate_key)
+                    result.unverified_locators.append(loc)
+                    break
+            except Exception:
+                break
+            try:
+                if kind == "combobox":
+                    outcome = await fill_combobox(loc, value)
+                else:
+                    outcome = await fill_and_verify(loc, value, delay_ms)
+            except RuntimeError:
+                _record(result, candidate_key, "skipped_credential",
+                        "credential_protected")
+                break
+            except Exception:
+                continue
+            if outcome == "filled":
+                _record(result, candidate_key, "filled")
+                result.filled.append(candidate_key)
+            elif outcome == "failed_verify":
+                try:
+                    reason = await diagnose(loc, value)
+                except Exception:
+                    reason = "value_mismatch"
+                _record(result, candidate_key, "failed_verify", reason)
+                result.unverified_required.append(candidate_key)
+            elif outcome == "skipped_unverified":
+                _record(result, candidate_key, "skipped_unverified",
+                        "requires_human")
+            else:
+                _record(result, candidate_key, outcome,
+                        "prefilled_kept" if outcome == "skipped_prefilled"
+                        else "credential_protected")
+            break
+
+
+async def inspect_and_fill(page: Page, answers: dict, delay_ms: int,
+                           app_url: str = "") -> StepResult:
     """Fill one visible step from verified answers; record human work."""
     result = StepResult()
+    specs, adapter = _adapter_hooks(app_url)
+    try:
+        root = await adapter.form_root(page) if adapter is not None else page
+    except Exception:
+        root = page
+    await _fill_verified_keys(page, root, specs, answers, delay_ms, result)
 
     fields = page.locator("input:not([type='hidden']), textarea")
     for index in range(await fields.count()):
@@ -188,12 +294,27 @@ async def inspect_and_fill(page: Page, answers: dict, delay_ms: int) -> StepResu
             continue
         value = answer_for_field(key, answers)
         if value is not None and str(value).strip():
+            # Phase A owned verified fills; cozulemeyen insanin isi.
             try:
-                if await type_field(loc, str(value), delay_ms) == FILLED:
-                    result.filled.append(key)
-            except RuntimeError:
+                sensitive = await is_sensitive(loc)
+            except Exception:
+                sensitive = False
+            if sensitive:
+                await mark_unverified(page, [loc])
+                _record(result, key, "skipped_sensitive",
+                        "sensitive_never_fill")
+                result.unverified_required.append(key)
+                result.unverified_locators.append(loc)
                 continue
-        elif not await _current_value(loc):
+            try:
+                empty = not await _current_value(loc)
+            except Exception:
+                empty = True
+            if required and empty:
+                result.unverified_required.append(key)
+                result.unverified_locators.append(loc)
+            continue
+        if not await _current_value(loc):
             if required:
                 result.unverified_required.append(key)
                 result.unverified_locators.append(loc)
@@ -209,6 +330,17 @@ async def inspect_and_fill(page: Page, answers: dict, delay_ms: int) -> StepResu
         required = await _is_required(loc)
         value = answer_for_field(key, answers)
         if value is not None and str(value).strip():
+            try:
+                sensitive = await is_sensitive(loc)
+            except Exception:
+                sensitive = False
+            if sensitive:
+                await mark_unverified(page, [loc])
+                _record(result, key, "skipped_sensitive",
+                        "sensitive_never_fill")
+                result.unverified_required.append(key)
+                result.unverified_locators.append(loc)
+                continue
             if await set_select(loc, str(value)) == FILLED:
                 result.filled.append(key)
         else:
@@ -251,7 +383,17 @@ async def inspect_and_fill(page: Page, answers: dict, delay_ms: int) -> StepResu
                     attr = None
                 matched = _matches_checkable(attr, value)
             if matched:
-                if await set_checkable(loc, True) == FILLED:
+                try:
+                    sensitive = await is_sensitive(loc)
+                except Exception:
+                    sensitive = False
+                if sensitive:
+                    await mark_unverified(page, [loc])
+                    _record(result, key, "skipped_sensitive",
+                            "sensitive_never_fill")
+                    result.unverified_required.append(key)
+                    result.unverified_locators.append(loc)
+                elif await set_checkable(loc, True) == FILLED:
                     result.filled.append(key)
             elif required:
                 result.unverified_required.append(key)
@@ -390,11 +532,13 @@ async def run_assisted(
                 await page.goto(app_url, wait_until="domcontentloaded", timeout=45_000)
             continue
         await dismiss_cookie_banner(page)
-        step = await inspect_and_fill(page, answers, settings.type_delay_ms)
+        step = await inspect_and_fill(page, answers, settings.type_delay_ms,
+                                      app_url)
         await attach_files(page, prepared)
         await mark_unverified(page, step.unverified_locators)
         summary.filled.extend(step.filled)
         summary.unverified.extend(step.unverified_required)
+        summary.fields.extend(step.field_records)
         logger.info(
             "Adım sonucu: %d dolduruldu, %d doğrulanmamış gerekli alan.",
             len(step.filled),

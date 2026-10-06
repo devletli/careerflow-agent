@@ -19,6 +19,7 @@ SKIPPED_CREDENTIAL = "skipped_credential"
 
 GREEN = "#22c55e"
 YELLOW = "#eab308"
+RED = "#ef4444"
 
 _CREDENTIAL_AUTOCOMPLETE = {"one-time-code", "current-password", "new-password"}
 
