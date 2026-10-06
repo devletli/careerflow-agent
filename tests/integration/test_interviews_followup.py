@@ -190,14 +190,14 @@ def test_application_filters_lifecycle_and_overdue(client, seed):
 
 def test_job_archive_filter_and_unarchive(client, seed):
     assert client.patch(f"/api/v1/jobs/{seed['job']}", json={"user_status": "ARCHIVED"}).status_code == 200
-    assert client.get("/api/v1/jobs?exclude_archived=true").json() == []
-    assert len(client.get("/api/v1/jobs?user_status=archived").json()) == 1
+    assert client.get("/api/v1/jobs?exclude_archived=true").json()["items"] == []
+    assert len(client.get("/api/v1/jobs?user_status=archived").json()["items"]) == 1
     # Unarchive via null clears the flag without touching pipeline status.
     r = client.patch(f"/api/v1/jobs/{seed['job']}", json={"user_status": None})
     assert r.status_code == 200, r.text
     assert r.json()["user_status"] is None
     assert r.json()["status"] == "NORMALIZED"
-    assert len(client.get("/api/v1/jobs?exclude_archived=true").json()) == 1
+    assert len(client.get("/api/v1/jobs?exclude_archived=true").json()["items"]) == 1
 
 
 def test_delete_application_cascades_interviews(client, seed):

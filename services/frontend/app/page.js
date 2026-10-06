@@ -85,6 +85,19 @@ export default function Home() {
   const documentsQ = usePolling(`/api/v1/documents?limit=100${qParam(dDocsQuery)}`);
   const eventsQ = usePolling(`/api/v1/events?limit=50${qParam(dEventsQuery)}`);
 
+  // Faz 4: /api/v1/jobs artik {items, next_cursor, total, scored, unscored}
+  // doner; eski dizi yanıtla da uyumlu kal (gecis donemi güvencesi).
+  const jobsRaw = jobsQ.data;
+  const jobsList = Array.isArray(jobsRaw) ? jobsRaw : (jobsRaw?.items || []);
+  const jobsMeta = Array.isArray(jobsRaw)
+    ? { total: jobsRaw.length, scored: 0, unscored: 0, next_cursor: null }
+    : {
+        total: jobsRaw?.total ?? jobsList.length,
+        scored: jobsRaw?.scored ?? 0,
+        unscored: jobsRaw?.unscored ?? 0,
+        next_cursor: jobsRaw?.next_cursor ?? null,
+      };
+
   const runAction = useCallback(async (action) => {
     const requiresExtraWarning = action.id === "fill_applications";
     const prompt = requiresExtraWarning
@@ -267,7 +280,7 @@ export default function Home() {
       {tab === "Overview" && (
         <OverviewTab
           status={statusQ.data}
-          jobs={jobsQ.data}
+          jobs={jobsList}
           applications={applicationsQ.data}
           events={eventsQ.data}
           eventsLoading={eventsQ.loading}
@@ -276,7 +289,7 @@ export default function Home() {
           actionMessage={actionMessage}
         />
       )}
-      {tab === "Jobs" && <JobsTab jobs={jobsQ.data} query={jobsQuery} onQueryChange={setJobsQuery} error={jobsQ.error} loading={jobsQ.loading} refresh={jobsQ.refresh} onDelete={(j) => requestDelete("job", j)} deletingId={deletingId} onArchive={archiveJob} archivingId={archivingId} hideArchived={hideArchived} onHideArchivedChange={setHideArchived} />}
+      {tab === "Jobs" && <JobsTab jobs={jobsList} jobsMeta={jobsMeta} query={jobsQuery} onQueryChange={setJobsQuery} error={jobsQ.error} loading={jobsQ.loading} refresh={jobsQ.refresh} onDelete={(j) => requestDelete("job", j)} deletingId={deletingId} onArchive={archiveJob} archivingId={archivingId} hideArchived={hideArchived} onHideArchivedChange={setHideArchived} />}
       {tab === "Applications" && (
         <ApplicationsTab
           applications={applicationsQ.data}

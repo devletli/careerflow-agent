@@ -92,6 +92,10 @@
   "PATCH"
  ],
  [
+  "/api/v1/jobs/{job_id}/explain",
+  "POST"
+ ],
+ [
   "/api/v1/pipeline/actions",
   "POST"
  ],

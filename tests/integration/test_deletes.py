@@ -204,7 +204,7 @@ def test_delete_application_success_unlinks_docs(client, seed):
 
 def test_delete_application_does_not_delete_job(client, seed):
     client.delete(f"/api/v1/applications/{seed['app_other']}")
-    jobs = client.get("/api/v1/jobs?limit=100").json()
+    jobs = client.get("/api/v1/jobs?limit=100").json()["items"]
     assert seed["job2"] in {j["id"] for j in jobs}
 
 
@@ -236,7 +236,7 @@ def test_delete_job_success_cascades_and_cleans_minio(client, seed):
     # related app/questions gone; unrelated job data survives
     assert client.delete(f"/api/v1/applications/{seed['app1']}").status_code == 404
     assert client.delete(f"/api/v1/documents/{seed['doc2']}").status_code == 404
-    jobs = client.get("/api/v1/jobs?limit=100").json()
+    jobs = client.get("/api/v1/jobs?limit=100").json()["items"]
     assert seed["job2"] in {j["id"] for j in jobs}
     docs = client.get("/api/v1/documents?limit=100").json()
     assert seed["doc_other"] in {d["id"] for d in docs}
@@ -245,7 +245,7 @@ def test_delete_job_success_cascades_and_cleans_minio(client, seed):
 def test_delete_job_does_not_delete_unrelated_job(client, seed):
     with patch.object(_api.minio_client, "delete_object", return_value=True):
         client.delete(f"/api/v1/jobs/{seed['job1']}")
-    jobs = client.get("/api/v1/jobs?limit=100").json()
+    jobs = client.get("/api/v1/jobs?limit=100").json()["items"]
     by_id = {j["id"] for j in jobs}
     assert seed["job1"] not in by_id
     assert seed["job2"] in by_id

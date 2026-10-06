@@ -100,14 +100,14 @@ def client(seed):
 
 def test_jobs_q_filters_company(client, seed):
     body = client.get("/api/v1/jobs", params={"q": "acme"}).json()
-    assert [j["company"] for j in body] == ["Acme"]
-    assert len(client.get("/api/v1/jobs").json()) == 2
+    assert [j["company"] for j in body["items"]] == ["Acme"]
+    assert len(client.get("/api/v1/jobs").json()["items"]) == 2
 
 
 def test_jobs_q_matches_title_and_url(client, seed):
-    assert len(client.get("/api/v1/jobs", params={"q": "backend"}).json()) == 1
-    assert len(client.get("/api/v1/jobs", params={"q": "globex.example"}).json()) == 1
-    assert client.get("/api/v1/jobs", params={"q": "no-such-thing"}).json() == []
+    assert len(client.get("/api/v1/jobs", params={"q": "backend"}).json()["items"]) == 1
+    assert len(client.get("/api/v1/jobs", params={"q": "globex.example"}).json()["items"]) == 1
+    assert client.get("/api/v1/jobs", params={"q": "no-such-thing"}).json()["items"] == []
 
 
 def test_events_q_filters_type_and_correlation(client, seed):
