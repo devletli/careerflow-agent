@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 Önceki kancada iki sorun vardı. fetchPage bağımlılık dizisindeydi ve her render'da yeni fonksiyon olursa sonsuz yeniden istek döngüsü oluşurdu. Ayrıca kanca kendisi polling yapmıyordu, plandaki "polling cursor'ı sabit tutsun" maddesi o haliyle gerçekleşmezdi. Düzeltilmişi:
 
 js
@@ -146,3 +147,6 @@ Test: skor 100 → son kova, skor 0 → ilk kova, hiç eşleşme yokken 10 sıf�
 8. Çakışma riski. Görünür masaüstü runner (handoff) işi ApplicationsTab ve durum gösterimine de dokunuyor. İki iş aynı dosyaları değiştirirse merge çakışması yaşanır. Handoff işini önce bitir ve merge et, bu işi sonra başlat. Ya da ayrı branch'te yap ve ikincisinde main'i çek.
 
 9. OpenAPI snapshot: yalnızca path+method tutuyor, sorgu parametresi değişikliklerini yakalamaz. UPDATE_SNAPSHOT=1 yalnızca fark tam olarak yeni route'lar olduğunda (inbox, stats, jobs/prepare) çalıştırılsın ve fark raporlansın.
+=======
+
+>>>>>>> 56cf224c482a196be84fe1e8ae8366300f2d74f9
