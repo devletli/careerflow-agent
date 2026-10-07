@@ -39,6 +39,7 @@ build/
 *.pfx
 *.crt
 *.cer
+task*.md
 secrets/
 
 # Candidate personal data and source documents

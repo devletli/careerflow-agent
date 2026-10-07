@@ -1,136 +1,148 @@
-Benim B1 taslağımdaki hata
+Önceki kancada iki sorun vardı. fetchPage bağımlılık dizisindeydi ve her render'da yeni fonksiyon olursa sonsuz yeniden istek döngüsü oluşurdu. Ayrıca kanca kendisi polling yapmıyordu, plandaki "polling cursor'ı sabit tutsun" maddesi o haliyle gerçekleşmezdi. Düzeltilmişi:
 
-evaluate_gates kapıları başlık ve ilan metninin tamamında arıyor. Bu senior kapısı için fazla geniş. "Du arbeitest mit Senior Engineers zusammen" gibi bir cümle, başlığı Junior olan bir ilanı da REVIEW'a düşürür. ü2|ü3 deseninde sözcük sınırı yok, başka sözcüklerin içinde de eşleşebilir. Ajan benim taslağımı uyguladığı için bu hata koda geçmiş olabilir. Kontrol:
+js
+// services/frontend/app/hooks/usePagedList.js
+import { useEffect, useRef, useState } from "react";
 
-powershell
-git grep -n -A12 "GATES" -- shared/matching/gates.py
+export function usePagedList(fetchPage, filtersKey, { pollMs = 10000 } = {}) {
+  const fetchRef = useRef(fetchPage);
+  fetchRef.current = fetchPage;                          // fonksiyon kimliği değişse de efekt yeniden başlamaz
+  const [nav, setNav] = useState({ key: filtersKey, stack: [null] });
+  const stack = nav.key === filtersKey ? nav.stack : [null];   // filtre değişince 1. sayfa, ayrı efekt yok
+  const cursor = stack[stack.length - 1];
+  const [data, setData] = useState({ items: [], next_cursor: null, total: 0 });
+  const [error, setError] = useState(null);
 
-Düzeltme: senior yalnızca başlıkta, clearance deseninde sözcük sınırı.
+  useEffect(() => {
+    let alive = true, timer;
+    const load = async () => {
+      if (document.visibilityState === "visible") {
+        try { const d = await fetchRef.current(cursor); if (alive) { setData(d); setError(null); } }
+        catch (e) { if (alive) setError(e); }            // son veri korunur, tablo boşalmaz
+      }
+      if (alive) timer = setTimeout(load, pollMs);
+    };
+    load();
+    return () => { alive = false; clearTimeout(timer); };
+  }, [cursor, filtersKey, pollMs]);
 
-python
-# shared/matching/gates.py
-@dataclass(frozen=True)
-class Gate:
-    name: str
-    pattern: re.Pattern[str]
-    profile_key: str
-    scope: str = "text"          # "title" | "text"
-
-GATES = (
-    Gate("german_c1", re.compile(
-        r"(verhandlungssicher|fließend|fliessend)\w*\s+deutsch|deutsch\s*(c1|c2|muttersprach\w*)", re.I),
-        "german_c1"),
-    Gate("senior_title", re.compile(r"\b(senior|lead|principal|head of|staff)\b", re.I),
-         "senior", scope="title"),
-    Gate("security_clearance", re.compile(
-        r"sicherheits(überprüfung|check)|security clearance|\bü[23]\b", re.I), "clearance"),
-)
-
-def evaluate_gates(job_text: str, title: str, satisfies: dict[str, bool]) -> list[str]:
-    hits = []
-    for g in GATES:
-        target = title if g.scope == "title" else f"{title}\n{job_text}"
-        if g.pattern.search(target) and not satisfies.get(g.profile_key, False):
-            hits.append(g.name)
-    return hits
-python
-def test_senior_in_body_does_not_trigger():
-    assert evaluate_gates("Du arbeitest mit Senior Engineers zusammen", "Backend Developer", {}) == []
-
-def test_senior_in_title_triggers():
-    assert evaluate_gates("Python", "Senior Backend Developer", {}) == ["senior_title"]
-Kontrol edilmesi gerekenler
-
-1. Golden-set etiketleri değişti. Ajan Senior DevOps ve Principal satırlarını REVIEW'a çevirmiş ve T=90'ın yine 25/25 verdiğini yazıyor. Kural bilinçli bir ürün kararı (kıdemli ilan insan kontrolüne gider), o yüzden meşru olabilir. Ama bu yine aynı sentetik sette doğrulama. Değişikliğin yalnızca etiket olduğunu doğrula (skorlar aynı kalmış olmalı):
-
-powershell
-git --no-pager diff c44cda6 HEAD -- tests/golden/jobs.jsonl evals/matching_cases.json
-
-Yalnızca bu iki satırda QUALIFIED → REVIEW değişikliği ve gerekçe notu görmelisin.
-
-2. Kapılar senin profilinde nasıl davranacak? satisfies değerleri varsayılan false. Gerçekte kıdemli seviyedeysen ya da Almanca C1 konuşuyorsan, bunları profile/profile.yaml içinde true yapmazsan neredeyse her şey REVIEW'a düşer. Yeni profildeki alanı kontrol et:
-
-powershell
-git grep -n -A6 "satisfies" -- profile/profile.example.yaml
-
-3. JSON loglama tüm servislerde çalışıyor mu? Ajan "5 worker'a koşullu install" yazmış, 6 worker ve API var. Eksik olan hangisi? Hepsine bak:
-
-powershell
-foreach ($s in "api","orchestrator","job-discovery","job-matching","cv-generator","application-analyzer","browser-agent") {
-  "--- $s"; docker compose logs --tail=3 $s
+  return { ...data, error, page: stack.length,
+    next: () => data.next_cursor && setNav({ key: filtersKey, stack: [...stack, data.next_cursor] }),
+    prev: () => stack.length > 1 && setNav({ key: filtersKey, stack: stack.slice(0, -1) }) };
 }
 
-Her satır JSON olmalı ve correlation_id taşımalı. İşlenen bir olayın satırlarında - değil gerçek bir id görünmeli.
+Toplu seçim (F4) sayfa dışındaki üst bileşende id kümesi olarak tutulmalı. Tablo state'inde tutulursa polling'den sonra kaybolur.
 
-4. CI'da sahte sırlı compose adımı var mı? Ajan "backend adımı eşdeğer olduğu için aynen duruyor" diyor. Doğrula:
+Plana yapılacak değişiklikler
 
-powershell
-git grep -n -E "compose|openssl|sed -i" -- .github/workflows/ci.yml
+1. Applications cursor'u tek alan değil, dörtlü (rank, score, updated_at, id), karışık ASC/DESC yönlerle. Satır karşılaştırması (tuple_ >) burada çalışmaz, OR zinciri gerekir. Bozuk cursor da 500 değil 422 dönmeli (madde 2 ve 4).
 
-Sırsız docker compose config -q varsa ${VAR:?} yüzünden CI kırılır. Ayrıca e2e testleri CI'da dışlanmış, yani dashboard regresyonlarını yalnızca yerelde yakalarsın. README'de yazıyor, bilinçli bir takas.
+python
+# services/api/app/pagination.py
+import base64, json
+from fastapi import HTTPException
+from typing import Generic, TypeVar
+from pydantic import BaseModel
 
-5. Onay token'ı davranışı. Yanlış action/application ile denenen token da yanıyor (fail-closed). Güvenli bir tercih, ama kullanıcı hata yaptığında dashboard'un yeni token mint edip tekrar onay istediğinden emin ol. Yoksa "Gönder" ikinci denemede sessizce 4xx döner.
+T = TypeVar("T")
 
-Senden beklenenler
-profile/profile.yaml içinde satisfies değerlerini kendi durumuna göre doldur.
-20–30 gerçek ilanı etiketle. Kalibrasyonun gerçek doğrulaması bu. Şu anki "25/25" yalnızca sentetik setin kendi içinde tutarlılığını gösteriyor.
-docker compose up --build ile dashboard'u açıp 6 sekmeyi, Documents tablosunu ve bir application detayını gözle kontrol et.
-Etiketlemeyi kolaylaştıran kısa takip talimatı
+class Page(BaseModel, Generic[T]):
+    items: list[T]
+    next_cursor: str | None
+    total: int
 
-Etiketleme elle yapılacak ama ilanları dışa aktarmak ajanın işi olabilir. İstersen şunu ver:
+def encode_cursor(*parts) -> str:
+    return base64.urlsafe_b64encode(json.dumps(parts, default=str).encode()).decode()
 
-text
-GÖREV: Etiketleme için aday dışa aktarımı ve kapı düzeltmesi. Yeni özellik ekleme.
+def decode_cursor(cur: str, n: int) -> list:
+    try:
+        parts = json.loads(base64.urlsafe_b64decode(cur.encode()))
+        if not isinstance(parts, list) or len(parts) != n:
+            raise ValueError
+        return parts
+    except Exception:
+        raise HTTPException(422, "invalid cursor")
+python
+# routers/applications_core.py (liste)
+RANK = case(
+    (Application.status.in_(["REQUIRES_HUMAN", "FAILED", "BLOCKED"]), 0),   # "seni bekleyenler"
+    (Application.status == "READY_TO_SUBMIT", 1),
+    (Application.status == "CREATED", 2),
+    (Application.status == "RUNNING", 3),
+    (Application.status == "SUBMITTED", 4),
+    else_=5,
+)
+SCORE = func.coalesce(JobMatch.score, -1)
 
-1. shared/matching/gates.py: `senior` kapısını yalnızca BAŞLIKTA ara (scope="title"),
-   clearance desenindeki ü2/ü3'ü sözcük sınırına al (\bü[23]\b). Gate dataclass'ına `scope`
-   alanı ekle, evaluate_gates buna göre hedef metni seçsin. Yeni testler:
-   - gövdede "Senior Engineers" geçen, başlığı Developer olan ilan kapıya TAKILMAZ
-   - başlığı "Senior ..." olan ilan `senior_title` verir
-   - "Müller2" gibi sözcük içi "ü2" `security_clearance` vermez
-   Golden/evals beklentilerini GİZLEMEDEN yeniden üret; farkı raporla.
+def after(cur: list):
+    r0, s0, u0, i0 = int(cur[0]), float(cur[1]), datetime.fromisoformat(cur[2]), UUID(cur[3])
+    return or_(
+        RANK > r0,
+        and_(RANK == r0, SCORE < s0),
+        and_(RANK == r0, SCORE == s0, Application.updated_at < u0),
+        and_(RANK == r0, SCORE == s0, Application.updated_at == u0, Application.id > i0),
+    )
+# order_by(RANK.asc(), SCORE.desc(), Application.updated_at.desc(), Application.id.asc())
 
-2. scripts/export_for_labeling.py: DB'deki son N (varsayılan 40) eşleşmiş ilanı, skor ve bandıyla
-   birlikte etiketlenecek JSONL olarak yaz. `label` alanı null gelsin; kullanıcı elle dolduracak.
-   Ajan ETİKET UYDURMAZ. Çıktı yolu tests/golden/real_labeled.jsonl (gitignore'da).
+Mevcut durum adlarını koddan çıkar (BLOCKED gibi durumlar "seni bekleyenler" grubunda olmalı). q içindeki % ve _ karakterlerini kaçır (ilike(..., escape="\\")). Testte aynı skor ve aynı updated_at ile 120 satırla sayfa sayfa gez: kopya ve atlama olmamalı.
 
-```python
-# scripts/export_for_labeling.py (iskelet; gerçek model/alan adlarını koda göre kullan)
-import asyncio, json, sys
-from pathlib import Path
-from sqlalchemy import select
-from shared.db.models import Job, JobMatch
-from shared.db.session import get_sessionmaker
+2. Documents "son sürüm" + cursor, row_number() ile. Anahtar (application_id veya job_id, tür, dil) olsun. Unique kısıt dili içeriyor, yoksa TR ve EN CV'den biri kaybolur. Dil küçük rozet olarak görünür:
 
-async def main(limit: int = 40, out: str = "tests/golden/real_labeled.jsonl") -> None:
-    sm = get_sessionmaker()
-    async with sm() as s:
-        rows = (await s.execute(
-            select(Job, JobMatch).join(JobMatch, JobMatch.job_id == Job.id)
-            .order_by(JobMatch.created_at.desc()).limit(limit)
-        )).all()
-    with Path(out).open("w", encoding="utf-8") as f:
-        for job, match in rows:
-            f.write(json.dumps({
-                "job": {"title": job.title, "company": job.company, "description": job.description},
-                "model_score": float(match.score),
-                "model_band": match.status,
-                "label": None,                      # QUALIFIED | REVIEW | NOT_QUALIFIED (kullanıcı doldurur)
-            }, ensure_ascii=False) + "\n")
-    print(f"wrote {len(rows)} rows -> {out}")
+python
+latest = (select(Document.id, func.row_number().over(
+              partition_by=(func.coalesce(Document.application_id, Document.job_id), Document.type, Document.language),
+              order_by=(Document.version.desc(), Document.created_at.desc())).label("rn")).subquery())
+base = select(Document).join(latest, latest.c.id == Document.id).where(latest.c.rn == 1)
+# order_by(Document.created_at.desc(), Document.id.asc()); cursor = (created_at, id), OR zinciriyle
 
-asyncio.run(main(*[int(a) if a.isdigit() else a for a in sys.argv[1:]]))
-```
+3. Durum haritası eksiksiz olmalı. Benim STATUS_UX taslağım yalnızca README'deki durumları içeriyordu, oysa raporunuza göre backend FILLING, FILLED, SUBMITTING ve BLOCKED da yazıyor. Haritada olmayan durum nötr rozetle görünür, ama bu sessiz bir eksik. Ajan haritayı koddan çıkarsın ve bir sözleşme testi eksiği yakalasın (kırılgan olabilir, yorumla belirt):
 
-3. scripts/calibrate.py: `label` değeri null olan satırları atla ve kaç satır atlandığını yazdır;
-   profil olarak profile/profile.yaml'ı (gerçek profil) kullandığını ve `satisfies` değerlerini
-   yüklediğini doğrula. Etiketli satır sayısı 15'in altındaysa "yetersiz veri" uyarısı bas.
-4. `make export-labels` hedefi ekle; README'ye 3 satırlık kullanım notu yaz.
-Kabul: pytest yeşil, ruff yeşil, gates testleri yeni senaryoları kapsıyor, export dosyasında
-hiçbir `label` dolu değil.
+python
+# tests/unit/test_status_ux_complete.py
+import pathlib, re
 
-Ajan bitirince şu iki çıktıyı yapıştırırsan bakarım:
+def backend_statuses() -> set[str]:
+    src = "\n".join(p.read_text(encoding="utf-8") for p in pathlib.Path("services").rglob("*.py")
+                    if "tests" not in p.parts)
+    return set(re.findall(r"_mark\([^)]*?[\"']([A-Z_]{4,})[\"']", src))
 
-powershell
-git --no-pager log --oneline -6
-python -m pytest -q
+def test_every_backend_status_has_ux_entry():
+    ux = pathlib.Path("services/frontend/app/lib/statusUx.js").read_text(encoding="utf-8")
+    missing = [s for s in backend_statuses() if f"{s}:" not in ux]
+    assert not missing, f"statusUx.js'te eksik durumlar: {missing}"
+
+4. "Hazırla (N≤20)" için kurallar (madde 8). Bu toplu akış "onaylı", ama tarayıcı aksiyonu olmadığı için onay token'ı gerekmez, yalnızca UI onayı yeter. Dikkat edilecekler: sınır sunucuda zorlanmalı (yalnız UI'da değil), çift tıklama ikinci bir toplu işi başlatmamalı, eşiğin altındaki ilan hazırlanmamalı.
+
+python
+class PrepareBatch(BaseModel):
+    job_ids: Annotated[list[UUID], Field(min_length=1, max_length=20)]
+    include_review: bool = False          # REVIEW yalnızca bilinçli seçimle
+
+@router.post("/prepare")
+async def prepare_batch(body: PrepareBatch, redis=Depends(get_redis), ...):
+    if not await redis.set("lock:prepare_batch", "1", nx=True, ex=600):
+        raise HTTPException(409, "bir toplu hazırlık zaten çalışıyor")
+    # her iş için MEVCUT orchestrator komutları (application → belge → form analizi);
+    # NOT_QUALIFIED reddedilir, REVIEW yalnızca include_review=True; uygunluk ve rate limit kontrolleri ATLANMAZ;
+    # idempotent (fingerprint): aynı ilan iki kez işlenmez. fill/submit komutları HİÇ çağrılmaz.
+
+Test: 21 id → 422, NOT_QUALIFIED reddedilir, ikinci eşzamanlı çağrı 409, batch sonunda hiçbir fill/submit olayı yok.
+
+5. Skor dağılımı (madde 7): skor 100 on birinci kovaya düşmesin, boş kovalar sıfırla doldurulsun:
+
+python
+bucket = func.least(func.floor(JobMatch.score / 10), 9).label("b")      # 100 -> kova 9
+rows = (await session.execute(select(bucket, func.count()).group_by(bucket))).all()
+counts = {int(b): c for b, c in rows}
+buckets = [{"from": i * 10, "to": i * 10 + 10, "count": counts.get(i, 0)} for i in range(10)]
+# yanıt: buckets, bands, max_score, threshold=settings.MIN_MATCH_SCORE (yalnızca gösterim), scored
+
+Test: skor 100 → son kova, skor 0 → ilk kova, hiç eşleşme yokken 10 sıfırlı kova.
+
+6. Madde 6: eski aksiyonları "Gelişmiş" altına taşırken mevcut sözleşme testleri bozulabilir. Bu testler kaynak metni tarıyor. Taşıma, onay diyaloğu gereken aksiyonların onay kodunu kaldırmamalı. Önceki kuralı koru: assert sayısı düşmesin, testi gevşetmek yerine yeni yerleşime uyarla.
+
+7. Madde 9: "blokaj nedeni" nereden gelecek? Headless worker BLOCKED yazıyor, ama sebebi (CAPTCHA, giriş, MFA) uygulama kaydına ya da event'e yazıyor mu, bilmiyoruz. Teşhis raporu bunu söylemeli. Yazmıyorsa mevcut event payload'ından oku, yeni durum ya da şema ekleme.
+
+8. Çakışma riski. Görünür masaüstü runner (handoff) işi ApplicationsTab ve durum gösterimine de dokunuyor. İki iş aynı dosyaları değiştirirse merge çakışması yaşanır. Handoff işini önce bitir ve merge et, bu işi sonra başlat. Ya da ayrı branch'te yap ve ikincisinde main'i çek.
+
+9. OpenAPI snapshot: yalnızca path+method tutuyor, sorgu parametresi değişikliklerini yakalamaz. UPDATE_SNAPSHOT=1 yalnızca fark tam olarak yeni route'lar olduğunda (inbox, stats, jobs/prepare) çalıştırılsın ve fark raporlansın.
